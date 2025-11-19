@@ -10,55 +10,101 @@ const firebaseConfig = {
   measurementId: "G-M64ZC4SXJ2"
 };
 
-// Initialize Firebase
+// ==== Init Firebase ====
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const auth = firebase.auth();
+const googleProvider = new firebase.auth.GoogleAuthProvider();
 
 // ==== DOM elements ====
-const nameInput = document.getElementById("nameInput");
-const messageInput = document.getElementById("messageInput");
-const chatForm = document.getElementById("chatForm");
 const messagesDiv = document.getElementById("messages");
 const typingIndicator = document.getElementById("typingIndicator");
-const roomButtons = document.querySelectorAll(".room-btn");
+const chatForm = document.getElementById("chatForm");
+const messageInput = document.getElementById("messageInput");
+
+const userInfo = document.getElementById("userInfo");
+const authButton = document.getElementById("authButton");
+
+const roomsRow = document.getElementById("roomsRow");
+const newRoomInput = document.getElementById("newRoomInput");
+const createRoomButton = document.getElementById("createRoomButton");
 
 // ==== Client identity & state ====
 const myClientId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-const LS_NAME_KEY = "darkchat_name";
 
-let currentRoom = "general";
-let messagesRef = null;
-let messagesListenerAdded = false;
-let typingRef = null;
-let typingListener = null;
+let currentUser = null;
+let isAdmin = false;
 
+// TODO: put your real admin emails here
+const adminEmails = [
+  "youremail@example.com",
+  // "another-admin@example.com"
+];
+
+const roomsRef = db.ref("rooms");
 const bansRef = db.ref("bans");
-const bannedClientIds = new Set();
+
+let bannedClientIds = new Set();
+
+let currentRoomId = null;
+let messagesRef = null;
+let typingRef = null;
+let messagesListenerAttached = false;
+let typingListener = null;
 
 const TYPING_TIMEOUT_MS = 3000;
 let typingTimeoutHandle = null;
 
-// ==== Load saved name (permanent username) ====
-const savedName = localStorage.getItem(LS_NAME_KEY);
-if (savedName) {
-  nameInput.value = savedName;
-}
+// ==== Auth state ====
+auth.onAuthStateChanged(user => {
+  currentUser = user || null;
+  isAdmin = !!(user && adminEmails.includes(user.email));
 
-// Helper: get current name (fallback to Anon)
-function getCurrentName() {
-  const n = nameInput.value.trim();
-  return n || "Anon";
-}
-
-// Save name when user changes it
-nameInput.addEventListener("change", () => {
-  localStorage.setItem(LS_NAME_KEY, getCurrentName());
+  updateAuthUI();
+  checkBanState();
 });
 
-// ==== Bans (device-level via clientId) ====
-// This is not true IP banning. It's a simple global "this clientId is banned" list.
-// Anyone who can pretend to be "admin" in the UI could abuse it. You're using this for fun,
-// not security.
+// Update UI for auth state
+function updateAuthUI() {
+  const sendBtn = chatForm.querySelector('button[type="submit"]');
+
+  if (currentUser) {
+    userInfo.textContent = `${currentUser.displayName || "User"} (${currentUser.email})`;
+    authButton.textContent = "Sign out";
+    messageInput.disabled = false;
+    messageInput.placeholder = "Type a message…";
+    if (sendBtn) sendBtn.disabled = false;
+  } else {
+    userInfo.textContent = "Not signed in";
+    authButton.textContent = "Sign in with Google";
+    messageInput.disabled = true;
+    messageInput.placeholder = "Sign in to chat…";
+    if (sendBtn) sendBtn.disabled = true;
+  }
+}
+
+// Auth button handler
+authButton.addEventListener("click", () => {
+  if (!currentUser) {
+    auth.signInWithPopup(googleProvider).catch(err => {
+      console.error("Sign-in failed:", err);
+      alert("Google sign-in failed. Check console.");
+    });
+  } else {
+    auth.signOut().catch(err => {
+      console.error("Sign-out failed:", err);
+    });
+  }
+});
+
+// Name comes from Google – no manual name, no impersonating others
+function getCurrentName() {
+  if (currentUser && currentUser.displayName) return currentUser.displayName;
+  if (currentUser && currentUser.email) return currentUser.email.split("@")[0];
+  return "Guest";
+}
+
+// ==== Bans (clientId-based) ====
 bansRef.on("child_added", snap => {
   bannedClientIds.add(snap.key);
   checkBanState();
@@ -72,85 +118,185 @@ bansRef.on("child_removed", snap => {
 function checkBanState() {
   const isBanned = bannedClientIds.has(myClientId);
   const sendBtn = chatForm.querySelector('button[type="submit"]');
+
   if (isBanned) {
     messageInput.disabled = true;
     messageInput.placeholder = "You are banned.";
     if (sendBtn) sendBtn.disabled = true;
-  } else {
+  } else if (currentUser) {
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
     if (sendBtn) sendBtn.disabled = false;
   }
 }
 
-// ==== Room switching ====
-roomButtons.forEach(btn => {
-  btn.addEventListener("click", () => {
-    const room = btn.getAttribute("data-room");
-    if (!room || room === currentRoom) return;
-    roomButtons.forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    switchRoom(room);
+// ==== Rooms: dynamic (custom) ====
+
+function initRooms() {
+  // Seed defaults if none exist
+  roomsRef.once("value").then(snap => {
+    if (!snap.exists()) {
+      const defaults = {
+        general: { name: "#general", createdAt: Date.now() },
+        gaming: { name: "#gaming", createdAt: Date.now() },
+        random: { name: "#random", createdAt: Date.now() }
+      };
+      roomsRef.update(defaults);
+    }
   });
+
+  roomsRef.on("child_added", snap => {
+    const roomId = snap.key;
+    const data = snap.val() || {};
+    addRoomButton(roomId, data);
+    // if no room selected yet, go to first added
+    if (!currentRoomId) {
+      switchRoom(roomId);
+    }
+  });
+
+  roomsRef.on("child_removed", snap => {
+    const roomId = snap.key;
+    removeRoomButton(roomId);
+    if (currentRoomId === roomId) {
+      currentRoomId = null;
+      // try to switch to another room if available
+      const firstBtn = roomsRow.querySelector(".room-btn");
+      if (firstBtn) {
+        switchRoom(firstBtn.dataset.roomId);
+      } else {
+        messagesDiv.innerHTML = "";
+        typingIndicator.textContent = "";
+      }
+    }
+  });
+}
+
+function addRoomButton(roomId, data) {
+  if (roomsRow.querySelector(`.room-btn[data-room-id="${roomId}"]`)) return;
+
+  const btn = document.createElement("button");
+  btn.classList.add("room-btn");
+  btn.dataset.roomId = roomId;
+  btn.textContent = data.name || roomId;
+
+  btn.addEventListener("click", () => {
+    if (roomId === currentRoomId) return;
+    switchRoom(roomId);
+  });
+
+  roomsRow.appendChild(btn);
+}
+
+function removeRoomButton(roomId) {
+  const btn = roomsRow.querySelector(`.room-btn[data-room-id="${roomId}"]`);
+  if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+}
+
+// Slug for room id from a name
+function slugifyRoomName(name) {
+  const base = name.toLowerCase().trim();
+  let slug = base.replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+  if (!slug) slug = "room-" + Date.now();
+  return slug;
+}
+
+// Create room
+function createRoom() {
+  const name = newRoomInput.value.trim();
+  if (!name) return;
+
+  const id = slugifyRoomName(name);
+
+  roomsRef.child(id).once("value").then(snap => {
+    if (snap.exists()) {
+      alert("A room with that id already exists.");
+      return;
+    }
+
+    return roomsRef.child(id).set({
+      name,
+      createdAt: Date.now(),
+      createdBy: currentUser ? currentUser.uid : null
+    }).then(() => {
+      newRoomInput.value = "";
+      switchRoom(id);
+    });
+  }).catch(err => {
+    console.error("Failed to create room:", err);
+    alert("Error creating room. Check console.");
+  });
+}
+
+createRoomButton.addEventListener("click", createRoom);
+
+newRoomInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    createRoom();
+  }
 });
 
-function switchRoom(room) {
-  currentRoom = room;
+// Switch room
+function switchRoom(roomId) {
+  currentRoomId = roomId;
 
-  // Detach old listeners
-  if (messagesRef && messagesListenerAdded) {
-    messagesRef.off(); // remove all listeners on that ref
-    messagesListenerAdded = false;
+  // deactivate old listeners
+  if (messagesRef && messagesListenerAttached) {
+    messagesRef.off();
+    messagesListenerAttached = false;
   }
   if (typingRef && typingListener) {
     typingRef.off("value", typingListener);
     typingListener = null;
   }
 
-  // Clear UI
+  // UI active state
+  roomsRow.querySelectorAll(".room-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.roomId === roomId);
+  });
+
+  // clear message UI
   messagesDiv.innerHTML = "";
   typingIndicator.textContent = "";
 
-  // New refs for this room
-  messagesRef = db.ref(`rooms/${room}/messages`);
-  typingRef = db.ref(`rooms/${room}/typing`);
+  // new refs
+  messagesRef = db.ref(`rooms/${roomId}/messages`);
+  typingRef = db.ref(`rooms/${roomId}/typing`);
 
-  // Listen for new / changed messages
-  messagesRef.limitToLast(50).on("child_added", snapshot => {
-    const data = snapshot.val();
+  // Listen to messages
+  messagesRef.limitToLast(100).on("child_added", snap => {
+    const id = snap.key;
+    const data = snap.val();
     if (!data) return;
-    const id = snapshot.key;
     addMessageToUI(id, data);
     scrollToBottom();
   });
 
-  messagesRef.on("child_changed", snapshot => {
-    const data = snapshot.val();
+  messagesRef.on("child_changed", snap => {
+    const id = snap.key;
+    const data = snap.val();
     if (!data) return;
-    const id = snapshot.key;
     updateMessageInUI(id, data);
   });
 
-  messagesRef.on("child_removed", snapshot => {
-    const id = snapshot.key;
+  messagesRef.on("child_removed", snap => {
+    const id = snap.key;
     removeMessageFromUI(id);
   });
 
-  messagesListenerAdded = true;
+  messagesListenerAttached = true;
 
-  // Typing indicator listener
-  typingListener = snapshot => {
-    const val = snapshot.val();
-    updateTypingIndicator(val);
+  // Typing indicator
+  typingListener = snap => {
+    updateTypingIndicator(snap.val());
   };
   typingRef.on("value", typingListener);
 }
 
-// Initial room
-switchRoom(currentRoom);
-
 // ==== Typing indicator ====
 messageInput.addEventListener("input", () => {
+  if (!currentUser || !typingRef) return;
   notifyTyping();
 });
 
@@ -164,9 +310,7 @@ function notifyTyping() {
 
   typingRef.child(myClientId).set(entry);
 
-  if (typingTimeoutHandle) {
-    clearTimeout(typingTimeoutHandle);
-  }
+  if (typingTimeoutHandle) clearTimeout(typingTimeoutHandle);
 
   typingTimeoutHandle = setTimeout(() => {
     typingRef.child(myClientId).remove();
@@ -185,28 +329,25 @@ function updateTypingIndicator(data) {
   Object.values(data).forEach(entry => {
     if (!entry || !entry.ts) return;
     if (now - entry.ts <= TYPING_TIMEOUT_MS) {
-      const n = (entry.name || "Anon").trim();
+      const n = (entry.name || "Guest").trim();
       if (n) names.push(n);
     }
   });
 
   const uniqueNames = [...new Set(names)];
-
-  if (uniqueNames.length === 0) {
+  if (!uniqueNames.length) {
     typingIndicator.textContent = "";
     return;
   }
 
-  const label =
-    uniqueNames.length === 1
-      ? `${uniqueNames[0]} is typing…`
-      : `${uniqueNames.join(", ")} are typing…`;
+  const label = uniqueNames.length === 1
+    ? `${uniqueNames[0]} is typing…`
+    : `${uniqueNames.join(", ")} are typing…`;
 
   typingIndicator.textContent = label;
 }
 
 // ==== Message helpers ====
-
 function formatTime(ts) {
   if (!ts) return "";
   const d = new Date(ts);
@@ -215,7 +356,6 @@ function formatTime(ts) {
   return `${h}:${m}`;
 }
 
-// Avatar color based on name
 function colorFromName(name) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
@@ -225,24 +365,17 @@ function colorFromName(name) {
   return `hsl(${hue}, 60%, 45%)`;
 }
 
-// Simple emoji replacement for common faces
 function replaceEmojiShortcodes(text) {
-  const map = {
-    ":)": "😊",
-    ":(": "☹️",
-    ":D": "😄",
-    "<3": "❤️"
-  };
+  const map = { ":)": "😊", ":(": "☹️", ":D": "😄", "<3": "❤️" };
   return map[text] || text;
 }
 
-// Convert URLs in text to links / image embeds
 function buildRichTextNodes(text) {
   const frag = document.createDocumentFragment();
-  const tokens = text.split(/(\s+)/); // keep spaces
+  const tokens = text.split(/(\s+)/);
 
   tokens.forEach(token => {
-    if (token.match(/^\s+$/)) {
+    if (/^\s+$/.test(token)) {
       frag.appendChild(document.createTextNode(token));
       return;
     }
@@ -253,7 +386,7 @@ function buildRichTextNodes(text) {
         const img = document.createElement("img");
         img.src = token;
         img.alt = "image";
-        img.style.maxWidth = "180px";
+        img.style.maxWidth = "260px";
         img.style.borderRadius = "8px";
         img.style.display = "block";
         img.style.marginTop = "4px";
@@ -276,18 +409,18 @@ function buildRichTextNodes(text) {
   return frag;
 }
 
-// Build DOM element for a message
 function buildMessageElement(id, data) {
   const { name, text, timestamp, clientId, edited } = data;
 
   const wrapper = document.createElement("div");
   wrapper.classList.add("message");
   if (clientId === myClientId) wrapper.classList.add("me");
-  wrapper.dataset.id = id || "";
+  wrapper.dataset.id = id;
+
+  const displayName = (name || "Guest").trim() || "Guest";
 
   const avatar = document.createElement("div");
   avatar.classList.add("avatar");
-  const displayName = (name || "Anon").trim() || "Anon";
   avatar.textContent = displayName[0].toUpperCase();
   avatar.style.background = colorFromName(displayName);
 
@@ -299,7 +432,7 @@ function buildMessageElement(id, data) {
 
   const nameEl = document.createElement("span");
   nameEl.classList.add("message-name");
-  nameEl.textContent = displayName;
+  nameEl.textContent = displayName + (isAdmin && currentUser && data.clientId === myClientId ? " (admin)" : "");
 
   const timeEl = document.createElement("span");
   timeEl.classList.add("message-time");
@@ -310,7 +443,6 @@ function buildMessageElement(id, data) {
 
   const textEl = document.createElement("div");
   textEl.classList.add("message-text");
-  textEl.textContent = "";
   textEl.appendChild(buildRichTextNodes(text || ""));
 
   const meta = document.createElement("div");
@@ -324,9 +456,9 @@ function buildMessageElement(id, data) {
   const actions = document.createElement("div");
   actions.classList.add("message-actions");
 
-  // Only allow edit/delete for own messages
   const isMine = clientId === myClientId;
 
+  // edit/delete own messages
   if (isMine) {
     const editBtn = document.createElement("button");
     editBtn.classList.add("msg-btn", "edit");
@@ -341,9 +473,8 @@ function buildMessageElement(id, data) {
     actions.appendChild(delBtn);
   }
 
-  // Basic "admin" ban: if your current name is literally "admin",
-  // you see a Ban button to ban that clientId.
-  if (getCurrentName().toLowerCase() === "admin" && clientId && clientId !== myClientId) {
+  // admin can ban others
+  if (isAdmin && clientId && clientId !== myClientId) {
     const banBtn = document.createElement("button");
     banBtn.classList.add("msg-btn", "ban");
     banBtn.textContent = "Ban";
@@ -363,25 +494,21 @@ function buildMessageElement(id, data) {
   return wrapper;
 }
 
-// Add message (new)
 function addMessageToUI(id, data) {
   const el = buildMessageElement(id, data);
   messagesDiv.appendChild(el);
 }
 
-// Update message (edited)
 function updateMessageInUI(id, data) {
   const existing = messagesDiv.querySelector(`.message[data-id="${id}"]`);
-  if (!existing) {
-    // If it's not there, just add it
-    addMessageToUI(id, data);
-    return;
-  }
   const newEl = buildMessageElement(id, data);
-  messagesDiv.replaceChild(newEl, existing);
+  if (existing) {
+    messagesDiv.replaceChild(newEl, existing);
+  } else {
+    messagesDiv.appendChild(newEl);
+  }
 }
 
-// Remove message (deleted)
 function removeMessageFromUI(id) {
   const existing = messagesDiv.querySelector(`.message[data-id="${id}"]`);
   if (existing && existing.parentNode) {
@@ -393,12 +520,11 @@ function scrollToBottom() {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// ==== Edit / Delete / Ban handlers ====
-
+// ==== Edit / Delete / Ban ====
 function handleEditMessage(id, data) {
   const currentText = data.text || "";
   const newText = prompt("Edit message:", currentText);
-  if (newText === null) return; // cancelled
+  if (newText === null) return;
   const trimmed = newText.trim();
   if (!trimmed) return;
 
@@ -421,7 +547,9 @@ function handleDeleteMessage(id) {
 }
 
 function handleBanClient(clientId) {
+  if (!isAdmin) return;
   if (!confirm("Ban this device from chatting?")) return;
+
   bansRef.child(clientId).set({
     banned: true,
     by: getCurrentName(),
@@ -433,24 +561,29 @@ function handleBanClient(clientId) {
 }
 
 // ==== Sending messages ====
-
 chatForm.addEventListener("submit", e => {
   e.preventDefault();
+
+  if (!currentUser) {
+    alert("Sign in with Google first.");
+    return;
+  }
 
   if (bannedClientIds.has(myClientId)) {
     alert("You are banned from chatting.");
     return;
   }
 
-  const name = getCurrentName();
-  const text = messageInput.value.trim();
-  if (!text.length) return;
+  if (!messagesRef) {
+    alert("No room selected.");
+    return;
+  }
 
-  // Save name persistently
-  localStorage.setItem(LS_NAME_KEY, name);
+  const text = messageInput.value.trim();
+  if (!text) return;
 
   const msg = {
-    name,
+    name: getCurrentName(),
     text,
     timestamp: Date.now(),
     clientId: myClientId
@@ -463,3 +596,7 @@ chatForm.addEventListener("submit", e => {
 
   messageInput.value = "";
 });
+
+// ==== Boot ====
+initRooms();
+checkBanState();
