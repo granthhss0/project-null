@@ -2,28 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Dark Chat</title>
+  <title>Project Null</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="style.css">
 
   <!-- Firebase (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
 </head>
 <body>
   <div class="chat-wrapper">
     <header class="chat-header">
-      <h1>Dark Chat</h1>
+      <h1>Project Null</h1>
+      <div class="user-controls">
+        <span id="userInfo">Not signed in</span>
+        <button id="authButton">Sign in with Google</button>
+      </div>
     </header>
 
     <div class="top-bar">
-      <div class="name-row">
-        <input id="nameInput" type="text" placeholder="Enter a name…" />
+      <div class="rooms-row" id="roomsRow">
+        <!-- Room buttons generated here -->
       </div>
-      <div class="rooms-row">
-        <button class="room-btn active" data-room="general">#general</button>
-        <button class="room-btn" data-room="gaming">#gaming</button>
-        <button class="room-btn" data-room="random">#random</button>
+      <div class="new-room">
+        <input id="newRoomInput" type="text" placeholder="New room name…" />
+        <button id="createRoomButton">Create</button>
       </div>
     </div>
 
@@ -32,8 +36,8 @@
     <div id="typingIndicator" class="typing-indicator"></div>
 
     <form id="chatForm" class="input-row">
-      <input id="messageInput" type="text" placeholder="Type a message…" autocomplete="off" />
-      <button type="submit">Send</button>
+      <input id="messageInput" type="text" placeholder="Sign in to chat…" autocomplete="off" disabled />
+      <button type="submit" disabled>Send</button>
     </form>
   </div>
 
