@@ -234,7 +234,8 @@ body {
   margin-top: 4px;
 }
 
-/* Meta row: edited tag + actions */
+/* ===== MESSAGE META + 3-DOT MENU ===== */
+
 .message-meta {
   margin-top: 4px;
   display: flex;
@@ -249,31 +250,70 @@ body {
 }
 
 .message-actions {
+  margin-left: auto;
   display: flex;
-  gap: 4px;
+  align-items: center;
 }
 
-/* Buttons on each message (edit/delete/ban) */
-.msg-btn {
+/* Wrapper so the menu can be positioned relative to the 3-dot button */
+.message-menu-wrapper {
+  position: relative;
+}
+
+/* The 3-dot button */
+.message-menu-btn {
   border: none;
-  border-radius: 999px;
-  padding: 3px 7px;
-  font-size: 10px;
+  background: transparent;
+  color: #9ca3af;
   cursor: pointer;
-  background: #111827;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.message-menu-btn:hover {
   color: #e5e7eb;
 }
 
-.msg-btn.delete {
-  background: #7f1d1d;
+/* The dropdown menu itself */
+.message-menu {
+  position: absolute;
+  right: 0;
+  top: 110%;
+  min-width: 130px;
+  background: #020617;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
+  padding: 4px 0;
+  display: none;
+  z-index: 1000;
 }
 
-.msg-btn.ban {
-  background: #92400e;
+/* When open */
+.message-menu.open {
+  display: flex;
+  flex-direction: column;
 }
 
-.msg-btn:hover {
-  opacity: 0.9;
+/* Items inside the dropdown */
+.message-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: none;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+
+.message-menu-item:hover {
+  background: #111827;
+}
+
+.message-menu-item.danger {
+  color: #fca5a5;
 }
 
 /* ===== INPUT ROW (BOTTOM) ===== */
@@ -317,7 +357,8 @@ body {
   transform: translateY(1px);
 }
 
-/* Small-screen tweaks */
+/* ===== SMALL-SCREEN TWEAKS ===== */
+
 @media (max-width: 640px) {
   .chat-header {
     padding: 12px 12px;
