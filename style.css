@@ -2,7 +2,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -14,7 +15,8 @@ body {
   color: #f5f5f5;
 }
 
-/* Full-screen chat wrapper */
+/* ===== FULL-SCREEN LAYOUT ===== */
+
 .chat-wrapper {
   position: fixed;
   inset: 0;              /* top:0; right:0; bottom:0; left:0 */
@@ -25,7 +27,8 @@ body {
   flex-direction: column;
 }
 
-/* Header at top */
+/* ===== HEADER / AUTH BAR ===== */
+
 .chat-header {
   padding: 16px 20px;
   border-bottom: 1px solid #151b26;
@@ -41,42 +44,44 @@ body {
   font-weight: 600;
 }
 
-/* Top bar (name + rooms) */
+.user-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.user-controls button {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #262f3f;
+  background: #05070a;
+  color: #e5e7eb;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.user-controls button:hover {
+  background: #111827;
+}
+
+/* ===== TOP BAR: ROOMS + NEW ROOM ===== */
+
 .top-bar {
   border-bottom: 1px solid #151b26;
   background: #090d13;
   padding: 10px 20px 12px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.name-row {
-  flex: 2;
-  min-width: 200px;
-}
-
-.name-row input {
-  width: 100%;
-  padding: 9px 11px;
-  border-radius: 8px;
-  border: 1px solid #262f3f;
-  background: #05070a;
-  color: #f5f5f5;
-  outline: none;
-  font-size: 13px;
-}
-
-.name-row input::placeholder {
-  color: #6d7689;
+  align-items: center;
+  gap: 12px;
 }
 
 .rooms-row {
-  flex: 3;
+  flex: 1;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .room-btn {
@@ -96,7 +101,42 @@ body {
   color: #f9fafb;
 }
 
-/* Messages area fills all remaining space */
+.new-room {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.new-room input {
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid #262f3f;
+  background: #05070a;
+  color: #f5f5f5;
+  outline: none;
+  font-size: 12px;
+}
+
+.new-room input::placeholder {
+  color: #6d7689;
+}
+
+.new-room button {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #262f3f;
+  background: #05070a;
+  color: #cbd5f5;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.new-room button:hover {
+  background: #111827;
+}
+
+/* ===== MESSAGES AREA ===== */
+
 .messages {
   flex: 1;
   padding: 14px 20px;
@@ -106,7 +146,6 @@ body {
   gap: 10px;
 }
 
-/* Typing indicator just above input */
 .typing-indicator {
   min-height: 18px;
   padding: 0 20px 4px;
@@ -115,21 +154,23 @@ body {
   font-style: italic;
 }
 
-/* Message layout */
+/* ===== MESSAGE BUBBLES ===== */
+
 .message {
   display: flex;
   gap: 10px;
   font-size: 13px;
 }
 
-.message.me .message-bubble {
-  background: #1e2636;
-}
-
 .message.me {
   flex-direction: row-reverse;
 }
 
+.message.me .message-bubble {
+  background: #1e2636;
+}
+
+/* Avatar circle */
 .avatar {
   width: 34px;
   height: 34px;
@@ -145,11 +186,12 @@ body {
   text-transform: uppercase;
 }
 
+/* Message bubble content */
 .message-bubble {
   background: #141b27;
   border-radius: 16px;
   padding: 8px 11px;
-  max-width: 60vw;       /* more room now that screen is wide */
+  max-width: 60vw;
 }
 
 .message-header {
@@ -174,6 +216,17 @@ body {
   white-space: pre-wrap;
 }
 
+/* Links inside messages */
+.message-text a {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.message-text a:hover {
+  text-decoration: underline;
+}
+
+/* Images embedded via URLs */
 .message-text img {
   max-width: 260px;
   border-radius: 8px;
@@ -181,6 +234,7 @@ body {
   margin-top: 4px;
 }
 
+/* Meta row: edited tag + actions */
 .message-meta {
   margin-top: 4px;
   display: flex;
@@ -199,6 +253,7 @@ body {
   gap: 4px;
 }
 
+/* Buttons on each message (edit/delete/ban) */
 .msg-btn {
   border: none;
   border-radius: 999px;
@@ -221,7 +276,8 @@ body {
   opacity: 0.9;
 }
 
-/* Input row pinned to bottom */
+/* ===== INPUT ROW (BOTTOM) ===== */
+
 .input-row {
   display: flex;
   padding: 10px 20px 16px;
@@ -259,4 +315,32 @@ body {
 
 .input-row button:active {
   transform: translateY(1px);
+}
+
+/* Small-screen tweaks */
+@media (max-width: 640px) {
+  .chat-header {
+    padding: 12px 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .top-bar {
+    padding: 8px 12px 10px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .messages {
+    padding: 10px 12px;
+  }
+
+  .input-row {
+    padding: 8px 12px 12px;
+  }
+
+  .message-bubble {
+    max-width: 80vw;
+  }
 }
