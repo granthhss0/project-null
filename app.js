@@ -56,6 +56,9 @@ let typingListener = null;
 const TYPING_TIMEOUT_MS = 3000;
 let typingTimeoutHandle = null;
 
+// default rooms that cannot be deleted
+const DEFAULT_ROOMS = ["general", "gaming", "random"];
+
 // ==== Name formatting helpers ====
 
 function capitalize(word) {
@@ -63,36 +66,37 @@ function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
-// Turn a Firebase user into "Firstname L"
+// Turn a Firebase user into "firstname l" (all lowercase)
 function formatDisplayNameFromUser(user) {
-  if (!user) return "Guest";
+  if (!user) return "guest";
 
-  // Prefer displayName if we have it
+  let baseName = "";
+
   if (user.displayName) {
     const parts = user.displayName.trim().split(/\s+/);
     if (parts.length >= 2) {
       const first = capitalize(parts[0]);
       const lastInitial = parts[1].charAt(0).toUpperCase();
-      return `${first} ${lastInitial}`;
+      baseName = `${first} ${lastInitial}`;
     } else {
-      return capitalize(parts[0]);
+      baseName = capitalize(parts[0]);
     }
-  }
-
-  // Fallback to email local part: "grant.schmidt" → Grant S
-  if (user.email) {
+  } else if (user.email) {
     const local = user.email.split("@")[0];
     const tokens = local.split(/[._]/);
     if (tokens.length >= 2) {
       const first = capitalize(tokens[0]);
       const lastInitial = tokens[1].charAt(0).toUpperCase();
-      return `${first} ${lastInitial}`;
+      baseName = `${first} ${lastInitial}`;
     } else {
-      return capitalize(tokens[0]);
+      baseName = capitalize(tokens[0]);
     }
+  } else {
+    baseName = "Guest";
   }
 
-  return "Guest";
+  // force entire name to lowercase
+  return baseName.toLowerCase();
 }
 
 function getCurrentName() {
@@ -179,10 +183,11 @@ function initRooms() {
   // Seed defaults if none exist
   roomsRef.once("value").then(snap => {
     if (!snap.exists()) {
+      const now = Date.now();
       const defaults = {
-        general: { name: "#general", createdAt: Date.now() },
-        gaming: { name: "#gaming", createdAt: Date.now() },
-        random: { name: "#random", createdAt: Date.now() }
+        general: { name: "#general", createdAt: now },
+        gaming: { name: "#gaming", createdAt: now },
+        random: { name: "#random", createdAt: now }
       };
       roomsRef.update(defaults);
     }
@@ -221,10 +226,26 @@ function addRoomButton(roomId, data) {
   btn.dataset.roomId = roomId;
   btn.textContent = data.name || roomId;
 
+  // main click: switch room
   btn.addEventListener("click", () => {
     if (roomId === currentRoomId) return;
     switchRoom(roomId);
   });
+
+  // tiny delete "x" for admins on non-default rooms
+  if (!DEFAULT_ROOMS.includes(roomId)) {
+    const delSpan = document.createElement("span");
+    delSpan.textContent = " ✕";
+    delSpan.style.fontSize = "11px";
+    delSpan.style.marginLeft = "4px";
+
+    delSpan.addEventListener("click", e => {
+      e.stopPropagation();
+      deleteRoom(roomId);
+    });
+
+    btn.appendChild(delSpan);
+  }
 
   roomsRow.appendChild(btn);
 }
@@ -282,6 +303,24 @@ newRoomInput.addEventListener("keydown", e => {
     createRoom();
   }
 });
+
+// Delete room – ADMINS ONLY, no default rooms
+function deleteRoom(roomId) {
+  if (!isAdmin) {
+    alert("Only admins can delete rooms.");
+    return;
+  }
+  if (DEFAULT_ROOMS.includes(roomId)) {
+    alert("Default rooms can’t be deleted.");
+    return;
+  }
+  if (!confirm("Delete this room and all its messages?")) return;
+
+  roomsRef.child(roomId).remove().catch(err => {
+    console.error("Failed to delete room:", err);
+    alert("Error deleting room. Check console.");
+  });
+}
 
 // Switch room
 function switchRoom(roomId) {
@@ -369,7 +408,7 @@ function updateTypingIndicator(data) {
   Object.values(data).forEach(entry => {
     if (!entry || !entry.ts) return;
     if (now - entry.ts <= TYPING_TIMEOUT_MS) {
-      const n = (entry.name || "Guest").trim();
+      const n = (entry.name || "guest").trim();
       if (n) names.push(n);
     }
   });
@@ -457,7 +496,7 @@ function buildMessageElement(id, data) {
   if (clientId === myClientId) wrapper.classList.add("me");
   wrapper.dataset.id = id;
 
-  const displayName = (name || "Guest").trim() || "Guest";
+  const displayName = (name || "guest").trim() || "guest";
   const senderIsAdmin = !!(email && adminEmails.includes(email));
 
   const avatar = document.createElement("div");
@@ -499,14 +538,17 @@ function buildMessageElement(id, data) {
 
   const isMine = clientId === myClientId;
 
-  // edit/delete own messages
+  // edit: only your own messages
   if (isMine) {
     const editBtn = document.createElement("button");
     editBtn.classList.add("msg-btn", "edit");
     editBtn.textContent = "Edit";
     editBtn.addEventListener("click", () => handleEditMessage(id, data));
     actions.appendChild(editBtn);
+  }
 
+  // delete: your own OR admin can delete anyone's
+  if (isMine || isAdmin) {
     const delBtn = document.createElement("button");
     delBtn.classList.add("msg-btn", "delete");
     delBtn.textContent = "Delete";
@@ -624,7 +666,7 @@ chatForm.addEventListener("submit", e => {
   if (!text) return;
 
   const msg = {
-    name: getCurrentName(),             // "Firstname L"
+    name: getCurrentName(),             // all lowercase "firstname l"
     email: currentUser.email || null,   // used to detect admins
     text,
     timestamp: Date.now(),
