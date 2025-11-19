@@ -59,6 +59,25 @@ let typingTimeoutHandle = null;
 // default rooms that cannot be deleted
 const DEFAULT_ROOMS = ["general", "gaming", "random"];
 
+// track currently open message menu (dropdown)
+let openMenuEl = null;
+
+// close open menu helper
+function closeOpenMenu() {
+  if (openMenuEl) {
+    openMenuEl.classList.remove("open");
+    openMenuEl = null;
+  }
+}
+
+// close menus when clicking anywhere else
+document.addEventListener("click", e => {
+  const menuWrapper = e.target.closest(".message-menu-wrapper");
+  if (!menuWrapper) {
+    closeOpenMenu();
+  }
+});
+
 // ==== Name formatting helpers ====
 
 function capitalize(word) {
@@ -488,6 +507,21 @@ function buildRichTextNodes(text) {
   return frag;
 }
 
+// Helper to build a menu item
+function createMenuItem(label, handler, isDanger = false) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.classList.add("message-menu-item");
+  if (isDanger) item.classList.add("danger");
+  item.textContent = label;
+  item.addEventListener("click", e => {
+    e.stopPropagation();
+    closeOpenMenu();
+    handler();
+  });
+  return item;
+}
+
 function buildMessageElement(id, data) {
   const { name, text, timestamp, clientId, edited, email } = data;
 
@@ -537,32 +571,52 @@ function buildMessageElement(id, data) {
   actions.classList.add("message-actions");
 
   const isMine = clientId === myClientId;
+  const canEdit = isMine;
+  const canDelete = isMine || isAdmin;
+  const canBan = isAdmin && clientId && clientId !== myClientId;
+  const hasActions = canEdit || canDelete || canBan;
 
-  // edit: only your own messages
-  if (isMine) {
-    const editBtn = document.createElement("button");
-    editBtn.classList.add("msg-btn", "edit");
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", () => handleEditMessage(id, data));
-    actions.appendChild(editBtn);
-  }
+  if (hasActions) {
+    const menuWrapper = document.createElement("div");
+    menuWrapper.classList.add("message-menu-wrapper");
 
-  // delete: your own OR admin can delete anyone's
-  if (isMine || isAdmin) {
-    const delBtn = document.createElement("button");
-    delBtn.classList.add("msg-btn", "delete");
-    delBtn.textContent = "Delete";
-    delBtn.addEventListener("click", () => handleDeleteMessage(id));
-    actions.appendChild(delBtn);
-  }
+    const menuBtn = document.createElement("button");
+    menuBtn.type = "button";
+    menuBtn.classList.add("message-menu-btn");
+    menuBtn.textContent = "⋮";
 
-  // viewer is admin → can ban others
-  if (isAdmin && clientId && clientId !== myClientId) {
-    const banBtn = document.createElement("button");
-    banBtn.classList.add("msg-btn", "ban");
-    banBtn.textContent = "Ban";
-    banBtn.addEventListener("click", () => handleBanClient(clientId));
-    actions.appendChild(banBtn);
+    const menu = document.createElement("div");
+    menu.classList.add("message-menu");
+
+    if (canEdit) {
+      menu.appendChild(
+        createMenuItem("Edit message", () => handleEditMessage(id, data))
+      );
+    }
+    if (canDelete) {
+      menu.appendChild(
+        createMenuItem("Delete message", () => handleDeleteMessage(id), true)
+      );
+    }
+    if (canBan) {
+      menu.appendChild(
+        createMenuItem("Ban user", () => handleBanClient(clientId), true)
+      );
+    }
+
+    menuWrapper.appendChild(menuBtn);
+    menuWrapper.appendChild(menu);
+    actions.appendChild(menuWrapper);
+
+    menuBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      // toggle menu
+      if (openMenuEl && openMenuEl !== menu) {
+        openMenuEl.classList.remove("open");
+      }
+      const isOpen = menu.classList.toggle("open");
+      openMenuEl = isOpen ? menu : null;
+    });
   }
 
   meta.appendChild(actions);
