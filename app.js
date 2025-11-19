@@ -1,31 +1,32 @@
-// 1. Firebase config – REPLACE with your own
+// Your Firebase config (from your Firebase console)
 const firebaseConfig = {
-  apiKey: "REPLACE_ME",
-  authDomain: "REPLACE_ME.firebaseapp.com",
-  databaseURL: "https://REPLACE_ME-default-rtdb.firebaseio.com",
-  projectId: "REPLACE_ME",
-  storageBucket: "REPLACE_ME.appspot.com",
-  messagingSenderId: "REPLACE_ME",
-  appId: "REPLACE_ME"
+  apiKey: "AIzaSyDMRoYJFzkvdJR27ehrOL2F0Log-9fWiOw",
+  authDomain: "project-null00.firebaseapp.com",
+  databaseURL: "https://project-null00-default-rtdb.firebaseio.com",
+  projectId: "project-null00",
+  storageBucket: "project-null00.firebasestorage.app",
+  messagingSenderId: "905344630350",
+  appId: "1:905344630350:web:55eb1e4f4cc9bac36e4d1f",
+  measurementId: "G-M64ZC4SXJ2"
 };
 
-// Initialize Firebase
+// Initialize Firebase using the CDN scripts loaded in index.html
 firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
 
+// Realtime Database reference
+const db = firebase.database();
 const messagesRef = db.ref("messages");
 
+// Elements
 const nameInput = document.getElementById("nameInput");
 const messageInput = document.getElementById("messageInput");
 const chatForm = document.getElementById("chatForm");
 const messagesDiv = document.getElementById("messages");
 
-let myName = "";
-
-// Keep a lightweight local id to mark "my" messages
+// Identify this device
 const myClientId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
 
-// Load previous messages and listen for new ones
+// Listen for new messages
 messagesRef.limitToLast(50).on("child_added", snapshot => {
   const data = snapshot.val();
   if (!data) return;
@@ -33,6 +34,7 @@ messagesRef.limitToLast(50).on("child_added", snapshot => {
   scrollToBottom();
 });
 
+// Add message bubble to UI
 function addMessageToUI({ name, text, timestamp, clientId }) {
   const msgEl = document.createElement("div");
   msgEl.classList.add("message");
@@ -61,6 +63,7 @@ function addMessageToUI({ name, text, timestamp, clientId }) {
   messagesDiv.appendChild(msgEl);
 }
 
+// Format time
 function formatTime(ts) {
   if (!ts) return "";
   const d = new Date(ts);
@@ -69,19 +72,19 @@ function formatTime(ts) {
   return `${h}:${m}`;
 }
 
+// Auto-scroll
 function scrollToBottom() {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
+// Handle sending messages
 chatForm.addEventListener("submit", e => {
   e.preventDefault();
 
   const name = nameInput.value.trim() || "Anon";
   const text = messageInput.value.trim();
 
-  if (!text) return;
-
-  myName = name;
+  if (!text.length) return;
 
   const msg = {
     name,
@@ -90,7 +93,7 @@ chatForm.addEventListener("submit", e => {
     clientId: myClientId
   };
 
-  // Push to Firebase
+  // Send to Firebase
   messagesRef.push(msg).catch(err => {
     console.error("Failed to send message:", err);
     alert("Error sending message. Check console.");
