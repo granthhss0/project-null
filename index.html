@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dark Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+</head>
+<body>
+  <div class="chat-wrapper">
+    <header class="chat-header">
+      <h1>Dark Chat</h1>
+    </header>
+
+    <div class="name-row">
+      <input id="nameInput" type="text" placeholder="Enter a name…" />
+    </div>
+
+    <div id="messages" class="messages"></div>
+
+    <form id="chatForm" class="input-row">
+      <input id="messageInput" type="text" placeholder="Type a message…" autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
