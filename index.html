@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="style.css">
 
-  <!-- Firebase SDKs -->
+  <!-- Firebase (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
 </head>
@@ -16,11 +16,20 @@
       <h1>Dark Chat</h1>
     </header>
 
-    <div class="name-row">
-      <input id="nameInput" type="text" placeholder="Enter a name…" />
+    <div class="top-bar">
+      <div class="name-row">
+        <input id="nameInput" type="text" placeholder="Enter a name…" />
+      </div>
+      <div class="rooms-row">
+        <button class="room-btn active" data-room="general">#general</button>
+        <button class="room-btn" data-room="gaming">#gaming</button>
+        <button class="room-btn" data-room="random">#random</button>
+      </div>
     </div>
 
     <div id="messages" class="messages"></div>
+
+    <div id="typingIndicator" class="typing-indicator"></div>
 
     <form id="chatForm" class="input-row">
       <input id="messageInput" type="text" placeholder="Type a message…" autocomplete="off" />
