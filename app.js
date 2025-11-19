@@ -35,10 +35,11 @@ const myClientId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
 let currentUser = null;
 let isAdmin = false;
 
-// TODO: put your real admin emails here
+// PUT ADMINS HERE: exact Google emails
 const adminEmails = [
-  "youremail@example.com",
-  // "another-admin@example.com"
+  "grantschmidt8@gmail.com"
+  // "friend@gmail.com",
+  // "other-admin@domain.com"
 ];
 
 const roomsRef = db.ref("rooms");
@@ -55,6 +56,49 @@ let typingListener = null;
 const TYPING_TIMEOUT_MS = 3000;
 let typingTimeoutHandle = null;
 
+// ==== Name formatting helpers ====
+
+function capitalize(word) {
+  if (!word) return "";
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+// Turn a Firebase user into "Firstname L"
+function formatDisplayNameFromUser(user) {
+  if (!user) return "Guest";
+
+  // Prefer displayName if we have it
+  if (user.displayName) {
+    const parts = user.displayName.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const first = capitalize(parts[0]);
+      const lastInitial = parts[1].charAt(0).toUpperCase();
+      return `${first} ${lastInitial}`;
+    } else {
+      return capitalize(parts[0]);
+    }
+  }
+
+  // Fallback to email local part: "grant.schmidt" → Grant S
+  if (user.email) {
+    const local = user.email.split("@")[0];
+    const tokens = local.split(/[._]/);
+    if (tokens.length >= 2) {
+      const first = capitalize(tokens[0]);
+      const lastInitial = tokens[1].charAt(0).toUpperCase();
+      return `${first} ${lastInitial}`;
+    } else {
+      return capitalize(tokens[0]);
+    }
+  }
+
+  return "Guest";
+}
+
+function getCurrentName() {
+  return formatDisplayNameFromUser(currentUser);
+}
+
 // ==== Auth state ====
 auth.onAuthStateChanged(user => {
   currentUser = user || null;
@@ -69,17 +113,23 @@ function updateAuthUI() {
   const sendBtn = chatForm.querySelector('button[type="submit"]');
 
   if (currentUser) {
-    userInfo.textContent = `${currentUser.displayName || "User"} (${currentUser.email})`;
+    userInfo.textContent = `${getCurrentName()} (${currentUser.email})`;
     authButton.textContent = "Sign out";
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
     if (sendBtn) sendBtn.disabled = false;
+
+    newRoomInput.disabled = false;
+    createRoomButton.disabled = false;
   } else {
     userInfo.textContent = "Not signed in";
     authButton.textContent = "Sign in with Google";
     messageInput.disabled = true;
     messageInput.placeholder = "Sign in to chat…";
     if (sendBtn) sendBtn.disabled = true;
+
+    newRoomInput.disabled = true;
+    createRoomButton.disabled = true;
   }
 }
 
@@ -96,13 +146,6 @@ authButton.addEventListener("click", () => {
     });
   }
 });
-
-// Name comes from Google – no manual name, no impersonating others
-function getCurrentName() {
-  if (currentUser && currentUser.displayName) return currentUser.displayName;
-  if (currentUser && currentUser.email) return currentUser.email.split("@")[0];
-  return "Guest";
-}
 
 // ==== Bans (clientId-based) ====
 bansRef.on("child_added", snap => {
@@ -149,7 +192,6 @@ function initRooms() {
     const roomId = snap.key;
     const data = snap.val() || {};
     addRoomButton(roomId, data);
-    // if no room selected yet, go to first added
     if (!currentRoomId) {
       switchRoom(roomId);
     }
@@ -160,7 +202,6 @@ function initRooms() {
     removeRoomButton(roomId);
     if (currentRoomId === roomId) {
       currentRoomId = null;
-      // try to switch to another room if available
       const firstBtn = roomsRow.querySelector(".room-btn");
       if (firstBtn) {
         switchRoom(firstBtn.dataset.roomId);
@@ -201,8 +242,13 @@ function slugifyRoomName(name) {
   return slug;
 }
 
-// Create room
+// Create room – SIGN-IN REQUIRED
 function createRoom() {
+  if (!currentUser) {
+    alert("Sign in to create rooms.");
+    return;
+  }
+
   const name = newRoomInput.value.trim();
   if (!name) return;
 
@@ -241,7 +287,6 @@ newRoomInput.addEventListener("keydown", e => {
 function switchRoom(roomId) {
   currentRoomId = roomId;
 
-  // deactivate old listeners
   if (messagesRef && messagesListenerAttached) {
     messagesRef.off();
     messagesListenerAttached = false;
@@ -251,20 +296,16 @@ function switchRoom(roomId) {
     typingListener = null;
   }
 
-  // UI active state
   roomsRow.querySelectorAll(".room-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.roomId === roomId);
   });
 
-  // clear message UI
   messagesDiv.innerHTML = "";
   typingIndicator.textContent = "";
 
-  // new refs
   messagesRef = db.ref(`rooms/${roomId}/messages`);
   typingRef = db.ref(`rooms/${roomId}/typing`);
 
-  // Listen to messages
   messagesRef.limitToLast(100).on("child_added", snap => {
     const id = snap.key;
     const data = snap.val();
@@ -287,7 +328,6 @@ function switchRoom(roomId) {
 
   messagesListenerAttached = true;
 
-  // Typing indicator
   typingListener = snap => {
     updateTypingIndicator(snap.val());
   };
@@ -410,7 +450,7 @@ function buildRichTextNodes(text) {
 }
 
 function buildMessageElement(id, data) {
-  const { name, text, timestamp, clientId, edited } = data;
+  const { name, text, timestamp, clientId, edited, email } = data;
 
   const wrapper = document.createElement("div");
   wrapper.classList.add("message");
@@ -418,6 +458,7 @@ function buildMessageElement(id, data) {
   wrapper.dataset.id = id;
 
   const displayName = (name || "Guest").trim() || "Guest";
+  const senderIsAdmin = !!(email && adminEmails.includes(email));
 
   const avatar = document.createElement("div");
   avatar.classList.add("avatar");
@@ -432,7 +473,7 @@ function buildMessageElement(id, data) {
 
   const nameEl = document.createElement("span");
   nameEl.classList.add("message-name");
-  nameEl.textContent = displayName + (isAdmin && currentUser && data.clientId === myClientId ? " (admin)" : "");
+  nameEl.textContent = displayName + (senderIsAdmin ? " (admin)" : "");
 
   const timeEl = document.createElement("span");
   timeEl.classList.add("message-time");
@@ -473,7 +514,7 @@ function buildMessageElement(id, data) {
     actions.appendChild(delBtn);
   }
 
-  // admin can ban others
+  // viewer is admin → can ban others
   if (isAdmin && clientId && clientId !== myClientId) {
     const banBtn = document.createElement("button");
     banBtn.classList.add("msg-btn", "ban");
@@ -583,7 +624,8 @@ chatForm.addEventListener("submit", e => {
   if (!text) return;
 
   const msg = {
-    name: getCurrentName(),
+    name: getCurrentName(),             // "Firstname L"
+    email: currentUser.email || null,   // used to detect admins
     text,
     timestamp: Date.now(),
     clientId: myClientId
