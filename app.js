@@ -44,7 +44,7 @@ let isAdmin = false;
 // Admins by username (exact lowercase name)
 const adminUsernames = [
    "grant",
-   "king derrick"
+   "king derrick",
 ];
 
 // Word filter
