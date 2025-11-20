@@ -13,11 +13,6 @@ Messages sync instantly through Firebase Realtime Database.
 Users can set a username, saved automatically in their browser (localStorage).
 
 ### 🧩 Multiple Rooms
-Includes:
-- `#general`
-- `#gaming`
-- `#random`
-
 Rooms update instantly with isolated message feeds.
 
 ### ✏️ Edit & Delete Messages
@@ -37,12 +32,6 @@ Each user gets:
 ### ⌨️ Typing Indicator
 Shows who is currently typing in real time.
 
-### 🔨 Basic Device Banning
-A lightweight system that blocks a clientId from sending messages:
-- Type your username as `"admin"` to see Ban buttons  
-- Persistent across reloads  
-*(Not real IP banning — this is a client-side Firebase-ban system)*
-
 ### 🧱 Pure Front-End
 Runs entirely on:
 - HTML  
@@ -50,9 +39,4 @@ Runs entirely on:
 - JavaScript  
 - Firebase Realtime Database (no backend server needed)  
 
-Perfect for GitHub Pages, Replit, Netlify, or any static host.
-
----
-
-## 📁 File Structure
-
+Powered by Firebase
