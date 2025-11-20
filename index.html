@@ -2,43 +2,122 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Project Null</title>
+  <title>PROJECT NULL</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 
-  <!-- Firebase (compat) -->
-  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
+  <!-- Firebase v8 (app + database only) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
-  <div class="chat-wrapper">
-    <header class="chat-header">
-      <h1>Project Null</h1>
-      <div class="user-controls">
-        <span id="userInfo">Not signed in</span>
-        <button id="authButton">Sign in with Google</button>
+  <div class="app-shell">
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-title">PROJECT NULL</div>
       </div>
-    </header>
 
-    <div class="top-bar">
-      <div class="rooms-row" id="roomsRow">
-        <!-- Room buttons generated here -->
+      <div class="user-card">
+        <div class="user-label">You</div>
+        <div id="userInfo" class="user-name">name not set</div>
+        <div class="user-note">
+          Pick a username + PIN once. It locks to this device.
+        </div>
       </div>
-      <div class="new-room">
-        <input id="newRoomInput" type="text" placeholder="New room name…" />
-        <button id="createRoomButton">Create</button>
+
+      <div class="rooms-header">Rooms</div>
+      <div id="roomsRow" class="rooms-list"></div>
+
+      <div class="new-room-block">
+        <input
+          id="newRoomInput"
+          type="text"
+          placeholder="create room (needs name)"
+          autocomplete="off"
+        />
+        <button id="createRoomButton" type="button">Create</button>
       </div>
-    </div>
+    </aside>
 
-    <div id="messages" class="messages"></div>
+    <!-- RIGHT MAIN PANEL -->
+    <main class="main-panel">
+      <header class="main-header">
+        <div class="main-title">
+          <span class="dot"></span>
+          <span>PROJECT NULL</span>
+        </div>
+        <div id="statusPill" class="status-pill status-offline">offline</div>
+      </header>
 
-    <div id="typingIndicator" class="typing-indicator"></div>
+      <!-- AUTH PANEL (SIGN UP / LOG IN) -->
+      <section id="authPanel" class="auth-panel">
+        <div class="auth-card">
+          <h2>Sign up</h2>
+          <p class="auth-desc">
+            First time here? Claim a username and protect it with a PIN.
+          </p>
+          <form id="signupForm" class="auth-form">
+            <input
+              id="signupName"
+              type="text"
+              placeholder="username (ex: grant s)"
+              autocomplete="off"
+              required
+            />
+            <input
+              id="signupPin"
+              type="password"
+              placeholder="4+ digit PIN"
+              minlength="4"
+              required
+            />
+            <button type="submit">Sign up</button>
+          </form>
+        </div>
 
-    <form id="chatForm" class="input-row">
-      <input id="messageInput" type="text" placeholder="Sign in to chat…" autocomplete="off" disabled />
-      <button type="submit" disabled>Send</button>
-    </form>
+        <div class="auth-card">
+          <h2>Log in</h2>
+          <p class="auth-desc">
+            Already registered? Type the same username + PIN to log back in.
+          </p>
+          <form id="loginForm" class="auth-form">
+            <input
+              id="loginName"
+              type="text"
+              placeholder="username"
+              autocomplete="off"
+              required
+            />
+            <input
+              id="loginPin"
+              type="password"
+              placeholder="PIN"
+              minlength="4"
+              required
+            />
+            <button type="submit">Log in</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- CHAT SECTION -->
+      <section class="chat-section">
+        <div id="messages" class="messages"></div>
+        <div id="typingIndicator" class="typing-indicator"></div>
+
+        <form id="chatForm" class="input-row">
+          <input
+            id="messageInput"
+            type="text"
+            placeholder="Set a name to chat…"
+            autocomplete="off"
+            disabled
+          />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+    </main>
   </div>
 
   <script src="app.js"></script>
