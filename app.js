@@ -35,8 +35,8 @@ let isAdmin = false;
 
 // Admins by username (exact display name, lowercase, filtered)
 const adminUsernames = [
-  // example:
-  // "grant s",
+  "grant",
+  "derrick"
 ];
 
 // WORD FILTER: everything in here will get censored in messages + names (case-insensitive)
@@ -73,7 +73,7 @@ function filterString(str) {
   let out = String(str);
   bannedWords.forEach(w => {
     if (!w) return;
-    const re = new RegExp(w, "gi"); // match anywhere, case-insensitive
+    const re = new RegExp(w, "gi");
     out = out.replace(re, "*".repeat(w.length));
   });
   return out;
@@ -120,9 +120,9 @@ function loadAccountFromStorage() {
   }
 }
 
-// Auth-like flow but with username + PIN
+// username + PIN flow
 async function promptForAccount() {
-  const rawName = prompt("Enter a chat name (example: grant s):");
+  const rawName = prompt("Enter a chat name (example: john d):");
   if (!rawName) return;
 
   const cleaned = rawName.trim().toLowerCase();
@@ -178,7 +178,6 @@ async function promptForAccount() {
 
 // ======== MENU / GLOBAL CLICK HANDLING =========
 
-// close open menu helper
 function closeOpenMenu() {
   if (openMenuEl) {
     openMenuEl.classList.remove("open");
@@ -186,7 +185,6 @@ function closeOpenMenu() {
   }
 }
 
-// close menus when clicking anywhere else
 document.addEventListener("click", e => {
   const menuWrapper = e.target.closest(".message-menu-wrapper");
   if (!menuWrapper) {
@@ -194,19 +192,11 @@ document.addEventListener("click", e => {
   }
 });
 
-// ==== Name formatting helpers ====
+// ==== Name helpers ====
 
-function capitalize(word) {
-  if (!word) return "";
-  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-}
-
-// For Google we had more logic; now we just keep "firstname l" style if user types that.
-// But we still run filterName and lowercase everything.
 function getCurrentName() {
   if (!currentAccount) return "guest";
-  // currentAccount.name is already lowercase + filtered
-  return currentAccount.name;
+  return currentAccount.name; // already lowercase + filtered
 }
 
 // ==== UI state based on account ====
@@ -216,7 +206,9 @@ function updateAuthUI() {
 
   if (currentAccount) {
     userInfo.textContent = currentAccount.name + (isAdmin ? " (admin)" : "");
-    authButton.textContent = "change name";
+    authButton.textContent = "name locked";
+    authButton.disabled = true; // cannot change / log out
+
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
     if (sendBtn) sendBtn.disabled = false;
@@ -226,6 +218,8 @@ function updateAuthUI() {
   } else {
     userInfo.textContent = "name not set";
     authButton.textContent = "set name";
+    authButton.disabled = false;
+
     messageInput.disabled = true;
     messageInput.placeholder = "Set a name to chat…";
     if (sendBtn) sendBtn.disabled = true;
@@ -235,8 +229,9 @@ function updateAuthUI() {
   }
 }
 
-// header button: open name/PIN flow
+// header button: only works if no account yet
 authButton.addEventListener("click", () => {
+  if (currentAccount) return; // name locked
   promptForAccount();
 });
 
@@ -269,7 +264,6 @@ function checkBanState() {
 // ==== Rooms: dynamic (custom) ====
 
 function initRooms() {
-  // Seed defaults if none exist
   roomsRef.once("value").then(snap => {
     if (!snap.exists()) {
       const now = Date.now();
@@ -315,13 +309,11 @@ function addRoomButton(roomId, data) {
   btn.dataset.roomId = roomId;
   btn.textContent = data.name || roomId;
 
-  // main click: switch room
   btn.addEventListener("click", () => {
     if (roomId === currentRoomId) return;
     switchRoom(roomId);
   });
 
-  // tiny delete "x" for admins on non-default rooms
   if (!DEFAULT_ROOMS.includes(roomId)) {
     const delSpan = document.createElement("span");
     delSpan.textContent = " ✕";
@@ -344,7 +336,6 @@ function removeRoomButton(roomId) {
   if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
 }
 
-// Slug for room id from a name
 function slugifyRoomName(name) {
   const base = name.toLowerCase().trim();
   let slug = base.replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
@@ -352,7 +343,6 @@ function slugifyRoomName(name) {
   return slug;
 }
 
-// Create room – ACCOUNT REQUIRED + filtered name
 function createRoom() {
   if (!currentAccount) {
     alert("Set a name to create rooms.");
@@ -399,7 +389,6 @@ newRoomInput.addEventListener("keydown", e => {
   }
 });
 
-// Delete room – ADMINS ONLY, no default rooms
 function deleteRoom(roomId) {
   if (!isAdmin) {
     alert("Only admins can delete rooms.");
@@ -417,7 +406,6 @@ function deleteRoom(roomId) {
   });
 }
 
-// Switch room
 function switchRoom(roomId) {
   currentRoomId = roomId;
 
@@ -583,7 +571,6 @@ function buildRichTextNodes(text) {
   return frag;
 }
 
-// Helper to build a menu item
 function createMenuItem(label, handler, isDanger = false) {
   const item = document.createElement("button");
   item.type = "button";
@@ -799,7 +786,7 @@ chatForm.addEventListener("submit", e => {
   const filteredText = filterString(text);
 
   const msg = {
-    name: getCurrentName(),   // already lowercase + filtered
+    name: getCurrentName(),
     text: filteredText,
     timestamp: Date.now(),
     clientId: myClientId
