@@ -36,7 +36,7 @@ let isAdmin = false;
 // Admins by username (exact display name, lowercase, filtered)
 const adminUsernames = [
   "grant",
-  "derrick"
+  "king derrick"
 ];
 
 // WORD FILTER: everything in here will get censored in messages + names (case-insensitive)
