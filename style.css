@@ -34,7 +34,7 @@ body {
   padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .brand-block {
@@ -81,6 +81,36 @@ body {
   font-size: 11px;
   color: #9ca3af;
 }
+
+/* PRESENCE (ONLINE USERS) */
+
+.presence-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #6b7280;
+}
+
+.presence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 80px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.presence-pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #111827;
+  background: #020617;
+  color: #e5e7eb;
+  white-space: nowrap;
+}
+
+/* ROOMS */
 
 .rooms-header {
   font-size: 11px;
@@ -161,6 +191,7 @@ body {
   display: flex;
   flex-direction: column;
   background: radial-gradient(circle at top, #020617, #020617 55%, #020617);
+  min-height: 0; /* allow inner flex children to shrink so messages can scroll */
 }
 
 /* HEADER */
@@ -296,6 +327,7 @@ body {
 
 .messages {
   flex: 1;
+  min-height: 0;          /* important for scroll */
   padding: 12px 18px;
   overflow-y: auto;
   display: flex;
