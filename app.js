@@ -13,8 +13,6 @@ const firebaseConfig = {
 // ==== Init Firebase ====
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const auth = firebase.auth();
-const googleProvider = new firebase.auth.GoogleAuthProvider();
 
 // ==== DOM elements ====
 const messagesDiv = document.getElementById("messages");
@@ -32,25 +30,24 @@ const createRoomButton = document.getElementById("createRoomButton");
 // ==== Client identity & state ====
 const myClientId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
 
-let currentUser = null;
+let currentAccount = null; // { username, name }
 let isAdmin = false;
 
-// PUT ADMINS HERE: exact Google emails
-const adminEmails = [
-  "youremail@example.com",
-  // "friend@gmail.com",
-  // "other-admin@domain.com"
+// Admins by username (exact display name, lowercase, filtered)
+const adminUsernames = [
+  // example:
+  // "grant s",
 ];
 
 // WORD FILTER: everything in here will get censored in messages + names (case-insensitive)
 const bannedWords = [
-  // put your words here, all lowercase. Example:
   // "badword1",
   // "badword2"
 ];
 
 const roomsRef = db.ref("rooms");
 const bansRef = db.ref("bans");
+const accountsRef = db.ref("accounts");
 
 let bannedClientIds = new Set();
 
@@ -82,10 +79,104 @@ function filterString(str) {
   return out;
 }
 
-// for names / room names, same logic but kept separate in case you want to tweak later
 function filterName(str) {
   return filterString(str);
 }
+
+// ======== ACCOUNT HELPERS =========
+
+function slugUsername(name) {
+  if (!name) return "";
+  return name.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+}
+
+function setCurrentAccount(acc) {
+  currentAccount = acc;
+  isAdmin = !!(currentAccount && adminUsernames.includes(currentAccount.name));
+  try {
+    if (currentAccount) {
+      localStorage.setItem("projectNullAccount", JSON.stringify(currentAccount));
+    } else {
+      localStorage.removeItem("projectNullAccount");
+    }
+  } catch (e) {
+    console.warn("Failed to persist account in storage", e);
+  }
+  updateAuthUI();
+  checkBanState();
+}
+
+function loadAccountFromStorage() {
+  try {
+    const raw = localStorage.getItem("projectNullAccount");
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.username && parsed.name) {
+      currentAccount = parsed;
+      isAdmin = !!adminUsernames.includes(parsed.name);
+    }
+  } catch (e) {
+    console.error("Failed to load account from storage", e);
+  }
+}
+
+// Auth-like flow but with username + PIN
+async function promptForAccount() {
+  const rawName = prompt("Enter a chat name (example: grant s):");
+  if (!rawName) return;
+
+  const cleaned = rawName.trim().toLowerCase();
+  if (!cleaned) {
+    alert("Name cannot be empty.");
+    return;
+  }
+
+  const filteredName = filterName(cleaned);
+  if (!filteredName.replace(/\*/g, "").trim()) {
+    alert("That name is not allowed.");
+    return;
+  }
+
+  const usernameSlug = slugUsername(filteredName);
+  if (!usernameSlug) {
+    alert("Invalid name.");
+    return;
+  }
+
+  const pin = prompt("Set / enter a 4-digit PIN for this name:");
+  if (!pin || pin.length < 4) {
+    alert("PIN must be at least 4 digits.");
+    return;
+  }
+
+  try {
+    const snap = await accountsRef.child(usernameSlug).once("value");
+    if (!snap.exists()) {
+      // create new account
+      await accountsRef.child(usernameSlug).set({
+        name: filteredName,
+        pin,
+        createdAt: Date.now()
+      });
+      setCurrentAccount({ username: usernameSlug, name: filteredName });
+      alert("Account created. You're logged in as " + filteredName);
+    } else {
+      // login
+      const data = snap.val();
+      if (data.pin !== pin) {
+        alert("Wrong PIN for that name.");
+        return;
+      }
+      setCurrentAccount({ username: usernameSlug, name: data.name });
+      alert("Logged in as " + data.name);
+    }
+  } catch (err) {
+    console.error("Account sign-in error:", err);
+    alert("Account error. Check console.");
+  }
+}
+
+// ======== MENU / GLOBAL CLICK HANDLING =========
 
 // close open menu helper
 function closeOpenMenu() {
@@ -110,60 +201,22 @@ function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
-// Turn a Firebase user into "firstname l" (all lowercase, filtered)
-function formatDisplayNameFromUser(user) {
-  if (!user) return "guest";
-
-  let baseName = "";
-
-  if (user.displayName) {
-    const parts = user.displayName.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      const first = capitalize(parts[0]);
-      const lastInitial = parts[1].charAt(0).toUpperCase();
-      baseName = `${first} ${lastInitial}`;
-    } else {
-      baseName = capitalize(parts[0]);
-    }
-  } else if (user.email) {
-    const local = user.email.split("@")[0];
-    const tokens = local.split(/[._]/);
-    if (tokens.length >= 2) {
-      const first = capitalize(tokens[0]);
-      const lastInitial = tokens[1].charAt(0).toUpperCase();
-      baseName = `${first} ${lastInitial}`;
-    } else {
-      baseName = capitalize(tokens[0]);
-    }
-  } else {
-    baseName = "Guest";
-  }
-
-  // all lowercase, then run through name filter
-  const lower = baseName.toLowerCase();
-  return filterName(lower);
-}
-
+// For Google we had more logic; now we just keep "firstname l" style if user types that.
+// But we still run filterName and lowercase everything.
 function getCurrentName() {
-  return formatDisplayNameFromUser(currentUser);
+  if (!currentAccount) return "guest";
+  // currentAccount.name is already lowercase + filtered
+  return currentAccount.name;
 }
 
-// ==== Auth state ====
-auth.onAuthStateChanged(user => {
-  currentUser = user || null;
-  isAdmin = !!(user && adminEmails.includes(user.email));
+// ==== UI state based on account ====
 
-  updateAuthUI();
-  checkBanState();
-});
-
-// Update UI for auth state
 function updateAuthUI() {
   const sendBtn = chatForm.querySelector('button[type="submit"]');
 
-  if (currentUser) {
-    userInfo.textContent = `${getCurrentName()} (${currentUser.email})`;
-    authButton.textContent = "Sign out";
+  if (currentAccount) {
+    userInfo.textContent = currentAccount.name + (isAdmin ? " (admin)" : "");
+    authButton.textContent = "change name";
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
     if (sendBtn) sendBtn.disabled = false;
@@ -171,10 +224,10 @@ function updateAuthUI() {
     newRoomInput.disabled = false;
     createRoomButton.disabled = false;
   } else {
-    userInfo.textContent = "Not signed in";
-    authButton.textContent = "Sign in with Google";
+    userInfo.textContent = "name not set";
+    authButton.textContent = "set name";
     messageInput.disabled = true;
-    messageInput.placeholder = "Sign in to chat…";
+    messageInput.placeholder = "Set a name to chat…";
     if (sendBtn) sendBtn.disabled = true;
 
     newRoomInput.disabled = true;
@@ -182,18 +235,9 @@ function updateAuthUI() {
   }
 }
 
-// Auth button handler
+// header button: open name/PIN flow
 authButton.addEventListener("click", () => {
-  if (!currentUser) {
-    auth.signInWithPopup(googleProvider).catch(err => {
-      console.error("Sign-in failed:", err);
-      alert("Google sign-in failed. Check console.");
-    });
-  } else {
-    auth.signOut().catch(err => {
-      console.error("Sign-out failed:", err);
-    });
-  }
+  promptForAccount();
 });
 
 // ==== Bans (clientId-based) ====
@@ -208,14 +252,14 @@ bansRef.on("child_removed", snap => {
 });
 
 function checkBanState() {
-  const isBanned = bannedClientIds.has(myClientId);
+  const banned = bannedClientIds.has(myClientId);
   const sendBtn = chatForm.querySelector('button[type="submit"]');
 
-  if (isBanned) {
+  if (banned) {
     messageInput.disabled = true;
     messageInput.placeholder = "You are banned.";
     if (sendBtn) sendBtn.disabled = true;
-  } else if (currentUser) {
+  } else if (currentAccount) {
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
     if (sendBtn) sendBtn.disabled = false;
@@ -308,17 +352,17 @@ function slugifyRoomName(name) {
   return slug;
 }
 
-// Create room – SIGN-IN REQUIRED + filtered name
+// Create room – ACCOUNT REQUIRED + filtered name
 function createRoom() {
-  if (!currentUser) {
-    alert("Sign in to create rooms.");
+  if (!currentAccount) {
+    alert("Set a name to create rooms.");
     return;
   }
 
   const rawName = newRoomInput.value.trim();
   if (!rawName) return;
 
-  const filtered = filterName(rawName);
+  const filtered = filterName(rawName.toLowerCase());
   if (!filtered.replace(/\*/g, "").trim()) {
     alert("Room name blocked by filter.");
     return;
@@ -335,7 +379,7 @@ function createRoom() {
     return roomsRef.child(id).set({
       name: filtered,
       createdAt: Date.now(),
-      createdBy: currentUser ? currentUser.uid : null
+      createdBy: currentAccount ? currentAccount.username : null
     }).then(() => {
       newRoomInput.value = "";
       switchRoom(id);
@@ -426,7 +470,7 @@ function switchRoom(roomId) {
 
 // ==== Typing indicator ====
 messageInput.addEventListener("input", () => {
-  if (!currentUser || !typingRef) return;
+  if (!currentAccount || !typingRef) return;
   notifyTyping();
 });
 
@@ -555,7 +599,7 @@ function createMenuItem(label, handler, isDanger = false) {
 }
 
 function buildMessageElement(id, data) {
-  const { name, text, timestamp, clientId, edited, email } = data;
+  const { name, text, timestamp, clientId, edited } = data;
 
   const wrapper = document.createElement("div");
   wrapper.classList.add("message");
@@ -563,7 +607,7 @@ function buildMessageElement(id, data) {
   wrapper.dataset.id = id;
 
   const displayName = (name || "guest").trim() || "guest";
-  const senderIsAdmin = !!(email && adminEmails.includes(email));
+  const senderIsAdmin = adminUsernames.includes(displayName);
 
   const avatar = document.createElement("div");
   avatar.classList.add("avatar");
@@ -731,12 +775,11 @@ function handleBanClient(clientId) {
 }
 
 // ==== Sending messages ====
-// Messages are filtered BEFORE being saved.
 chatForm.addEventListener("submit", e => {
   e.preventDefault();
 
-  if (!currentUser) {
-    alert("Sign in with Google first.");
+  if (!currentAccount) {
+    alert("Set a name first.");
     return;
   }
 
@@ -756,8 +799,7 @@ chatForm.addEventListener("submit", e => {
   const filteredText = filterString(text);
 
   const msg = {
-    name: getCurrentName(),             // already filtered + lowercase
-    email: currentUser.email || null,   // used to detect admins
+    name: getCurrentName(),   // already lowercase + filtered
     text: filteredText,
     timestamp: Date.now(),
     clientId: myClientId
@@ -772,5 +814,7 @@ chatForm.addEventListener("submit", e => {
 });
 
 // ==== Boot ====
+loadAccountFromStorage();
+updateAuthUI();
 initRooms();
 checkBanState();
