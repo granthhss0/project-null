@@ -10,36 +10,41 @@ const firebaseConfig = {
   measurementId: "G-M64ZC4SXJ2"
 };
 
-// ==== Init Firebase ====
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ==== DOM elements ====
+// ===== DOM ELEMENTS =====
 const messagesDiv = document.getElementById("messages");
 const typingIndicator = document.getElementById("typingIndicator");
 const chatForm = document.getElementById("chatForm");
 const messageInput = document.getElementById("messageInput");
 
 const userInfo = document.getElementById("userInfo");
-const authButton = document.getElementById("authButton");
-
 const roomsRow = document.getElementById("roomsRow");
 const newRoomInput = document.getElementById("newRoomInput");
 const createRoomButton = document.getElementById("createRoomButton");
 
-// ==== Client identity & state ====
+const authPanel = document.getElementById("authPanel");
+const signupForm = document.getElementById("signupForm");
+const loginForm = document.getElementById("loginForm");
+const signupNameInput = document.getElementById("signupName");
+const signupPinInput = document.getElementById("signupPin");
+const loginNameInput = document.getElementById("loginName");
+const loginPinInput = document.getElementById("loginPin");
+const statusPill = document.getElementById("statusPill");
+
+// ===== STATE =====
 const myClientId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
 
 let currentAccount = null; // { username, name }
 let isAdmin = false;
 
-// Admins by username (exact display name, lowercase, filtered)
+// Admins by username (exact lowercase name)
 const adminUsernames = [
-  "grant",
-  "king derrick"
+  // "grant s",
 ];
 
-// WORD FILTER: everything in here will get censored in messages + names (case-insensitive)
+// Word filter
 const bannedWords = [
   // "badword1",
   // "badword2"
@@ -60,14 +65,11 @@ let typingListener = null;
 const TYPING_TIMEOUT_MS = 3000;
 let typingTimeoutHandle = null;
 
-// default rooms that cannot be deleted
 const DEFAULT_ROOMS = ["general", "gaming", "random"];
 
-// track currently open message menu (dropdown)
 let openMenuEl = null;
 
-// ======== FILTER HELPERS =========
-
+// ===== FILTER HELPERS =====
 function filterString(str) {
   if (!str) return "";
   let out = String(str);
@@ -83,11 +85,14 @@ function filterName(str) {
   return filterString(str);
 }
 
-// ======== ACCOUNT HELPERS =========
-
+// ===== ACCOUNT HELPERS =====
 function slugUsername(name) {
   if (!name) return "";
-  return name.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-]/g, "");
 }
 
 function setCurrentAccount(acc) {
@@ -100,7 +105,7 @@ function setCurrentAccount(acc) {
       localStorage.removeItem("projectNullAccount");
     }
   } catch (e) {
-    console.warn("Failed to persist account in storage", e);
+    console.warn("Failed to persist account", e);
   }
   updateAuthUI();
   checkBanState();
@@ -120,64 +125,12 @@ function loadAccountFromStorage() {
   }
 }
 
-// username + PIN flow
-async function promptForAccount() {
-  const rawName = prompt("Enter a chat name (example: john d):");
-  if (!rawName) return;
-
-  const cleaned = rawName.trim().toLowerCase();
-  if (!cleaned) {
-    alert("Name cannot be empty.");
-    return;
-  }
-
-  const filteredName = filterName(cleaned);
-  if (!filteredName.replace(/\*/g, "").trim()) {
-    alert("That name is not allowed.");
-    return;
-  }
-
-  const usernameSlug = slugUsername(filteredName);
-  if (!usernameSlug) {
-    alert("Invalid name.");
-    return;
-  }
-
-  const pin = prompt("Set / enter a 4-digit PIN for this name:");
-  if (!pin || pin.length < 4) {
-    alert("PIN must be at least 4 digits.");
-    return;
-  }
-
-  try {
-    const snap = await accountsRef.child(usernameSlug).once("value");
-    if (!snap.exists()) {
-      // create new account
-      await accountsRef.child(usernameSlug).set({
-        name: filteredName,
-        pin,
-        createdAt: Date.now()
-      });
-      setCurrentAccount({ username: usernameSlug, name: filteredName });
-      alert("Account created. You're logged in as " + filteredName);
-    } else {
-      // login
-      const data = snap.val();
-      if (data.pin !== pin) {
-        alert("Wrong PIN for that name.");
-        return;
-      }
-      setCurrentAccount({ username: usernameSlug, name: data.name });
-      alert("Logged in as " + data.name);
-    }
-  } catch (err) {
-    console.error("Account sign-in error:", err);
-    alert("Account error. Check console.");
-  }
+function getCurrentName() {
+  if (!currentAccount) return "guest";
+  return currentAccount.name;
 }
 
-// ======== MENU / GLOBAL CLICK HANDLING =========
-
+// ===== 3-DOT MENU CLOSE HANDLING =====
 function closeOpenMenu() {
   if (openMenuEl) {
     openMenuEl.classList.remove("open");
@@ -186,28 +139,34 @@ function closeOpenMenu() {
 }
 
 document.addEventListener("click", e => {
-  const menuWrapper = e.target.closest(".message-menu-wrapper");
-  if (!menuWrapper) {
-    closeOpenMenu();
-  }
+  const wrap = e.target.closest(".message-menu-wrapper");
+  if (!wrap) closeOpenMenu();
 });
 
-// ==== Name helpers ====
+// ===== UI STATE =====
+function updateStatusPill() {
+  if (!statusPill) return;
 
-function getCurrentName() {
-  if (!currentAccount) return "guest";
-  return currentAccount.name; // already lowercase + filtered
+  statusPill.classList.remove("status-offline", "status-online", "status-banned");
+
+  if (bannedClientIds.has(myClientId)) {
+    statusPill.textContent = "banned";
+    statusPill.classList.add("status-banned");
+  } else if (currentAccount) {
+    statusPill.textContent = "online";
+    statusPill.classList.add("status-online");
+  } else {
+    statusPill.textContent = "offline";
+    statusPill.classList.add("status-offline");
+  }
 }
-
-// ==== UI state based on account ====
 
 function updateAuthUI() {
   const sendBtn = chatForm.querySelector('button[type="submit"]');
 
   if (currentAccount) {
     userInfo.textContent = currentAccount.name + (isAdmin ? " (admin)" : "");
-    authButton.textContent = "name locked";
-    authButton.disabled = true; // cannot change / log out
+    if (authPanel) authPanel.classList.add("hidden");
 
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
@@ -217,25 +176,21 @@ function updateAuthUI() {
     createRoomButton.disabled = false;
   } else {
     userInfo.textContent = "name not set";
-    authButton.textContent = "set name";
-    authButton.disabled = false;
+    if (authPanel) authPanel.classList.remove("hidden");
 
     messageInput.disabled = true;
     messageInput.placeholder = "Set a name to chat…";
+    const sendBtn = chatForm.querySelector('button[type="submit"]');
     if (sendBtn) sendBtn.disabled = true;
 
     newRoomInput.disabled = true;
     createRoomButton.disabled = true;
   }
+
+  updateStatusPill();
 }
 
-// header button: only works if no account yet
-authButton.addEventListener("click", () => {
-  if (currentAccount) return; // name locked
-  promptForAccount();
-});
-
-// ==== Bans (clientId-based) ====
+// ===== BANS =====
 bansRef.on("child_added", snap => {
   bannedClientIds.add(snap.key);
   checkBanState();
@@ -259,10 +214,112 @@ function checkBanState() {
     messageInput.placeholder = "Type a message…";
     if (sendBtn) sendBtn.disabled = false;
   }
+
+  updateStatusPill();
 }
 
-// ==== Rooms: dynamic (custom) ====
+// ===== SIGN UP / LOG IN HANDLERS =====
+// NOTE: once currentAccount is set, UI is "locked" – no switch/logout.
 
+signupForm.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (currentAccount) {
+    alert("This device already has an account locked in.");
+    return;
+  }
+
+  const rawName = signupNameInput.value.trim().toLowerCase();
+  const pin = signupPinInput.value.trim();
+
+  if (!rawName) {
+    alert("Name cannot be empty.");
+    return;
+  }
+  if (!pin || pin.length < 4) {
+    alert("PIN must be at least 4 digits.");
+    return;
+  }
+
+  const filteredName = filterName(rawName);
+  if (!filteredName.replace(/\*/g, "").trim()) {
+    alert("That name is not allowed.");
+    return;
+  }
+
+  const usernameSlug = slugUsername(filteredName);
+  if (!usernameSlug) {
+    alert("Invalid name.");
+    return;
+  }
+
+  try {
+    const snap = await accountsRef.child(usernameSlug).once("value");
+    if (snap.exists()) {
+      alert("That username already exists. Use the log in form.");
+      return;
+    }
+
+    await accountsRef.child(usernameSlug).set({
+      name: filteredName,
+      pin,
+      createdAt: Date.now()
+    });
+
+    setCurrentAccount({ username: usernameSlug, name: filteredName });
+    alert("Account created. You're logged in as " + filteredName);
+  } catch (err) {
+    console.error("Sign up error:", err);
+    alert("Sign up failed. Check console.");
+  }
+});
+
+loginForm.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (currentAccount) {
+    alert("This device already has an account locked in.");
+    return;
+  }
+
+  const rawName = loginNameInput.value.trim().toLowerCase();
+  const pin = loginPinInput.value.trim();
+
+  if (!rawName) {
+    alert("Name cannot be empty.");
+    return;
+  }
+  if (!pin || pin.length < 4) {
+    alert("PIN must be at least 4 digits.");
+    return;
+  }
+
+  const filteredName = filterName(rawName);
+  const usernameSlug = slugUsername(filteredName);
+  if (!usernameSlug) {
+    alert("Invalid name.");
+    return;
+  }
+
+  try {
+    const snap = await accountsRef.child(usernameSlug).once("value");
+    if (!snap.exists()) {
+      alert("No account with that name. Use sign up.");
+      return;
+    }
+    const data = snap.val();
+    if (data.pin !== pin) {
+      alert("Wrong PIN.");
+      return;
+    }
+
+    setCurrentAccount({ username: usernameSlug, name: data.name });
+    alert("Logged in as " + data.name);
+  } catch (err) {
+    console.error("Login error:", err);
+    alert("Login failed. Check console.");
+  }
+});
+
+// ===== ROOMS =====
 function initRooms() {
   roomsRef.once("value").then(snap => {
     if (!snap.exists()) {
@@ -316,9 +373,9 @@ function addRoomButton(roomId, data) {
 
   if (!DEFAULT_ROOMS.includes(roomId)) {
     const delSpan = document.createElement("span");
-    delSpan.textContent = " ✕";
+    delSpan.textContent = "✕";
     delSpan.style.fontSize = "11px";
-    delSpan.style.marginLeft = "4px";
+    delSpan.style.marginLeft = "8px";
 
     delSpan.addEventListener("click", e => {
       e.stopPropagation();
@@ -360,28 +417,31 @@ function createRoom() {
 
   const id = slugifyRoomName(filtered);
 
-  roomsRef.child(id).once("value").then(snap => {
-    if (snap.exists()) {
-      alert("A room with that id already exists.");
-      return;
-    }
+  roomsRef
+    .child(id)
+    .once("value")
+    .then(snap => {
+      if (snap.exists()) {
+        alert("A room with that id already exists.");
+        return;
+      }
 
-    return roomsRef.child(id).set({
-      name: filtered,
-      createdAt: Date.now(),
-      createdBy: currentAccount ? currentAccount.username : null
-    }).then(() => {
-      newRoomInput.value = "";
-      switchRoom(id);
+      return roomsRef.child(id).set({
+        name: filtered,
+        createdAt: Date.now(),
+        createdBy: currentAccount ? currentAccount.username : null
+      }).then(() => {
+        newRoomInput.value = "";
+        switchRoom(id);
+      });
+    })
+    .catch(err => {
+      console.error("Failed to create room:", err);
+      alert("Error creating room. Check console.");
     });
-  }).catch(err => {
-    console.error("Failed to create room:", err);
-    alert("Error creating room. Check console.");
-  });
 }
 
 createRoomButton.addEventListener("click", createRoom);
-
 newRoomInput.addEventListener("keydown", e => {
   if (e.key === "Enter") {
     e.preventDefault();
@@ -400,10 +460,13 @@ function deleteRoom(roomId) {
   }
   if (!confirm("Delete this room and all its messages?")) return;
 
-  roomsRef.child(roomId).remove().catch(err => {
-    console.error("Failed to delete room:", err);
-    alert("Error deleting room. Check console.");
-  });
+  roomsRef
+    .child(roomId)
+    .remove()
+    .catch(err => {
+      console.error("Failed to delete room:", err);
+      alert("Error deleting room. Check console.");
+    });
 }
 
 function switchRoom(roomId) {
@@ -456,7 +519,7 @@ function switchRoom(roomId) {
   typingRef.on("value", typingListener);
 }
 
-// ==== Typing indicator ====
+// ===== TYPING INDICATOR =====
 messageInput.addEventListener("input", () => {
   if (!currentAccount || !typingRef) return;
   notifyTyping();
@@ -473,7 +536,6 @@ function notifyTyping() {
   typingRef.child(myClientId).set(entry);
 
   if (typingTimeoutHandle) clearTimeout(typingTimeoutHandle);
-
   typingTimeoutHandle = setTimeout(() => {
     typingRef.child(myClientId).remove();
   }, TYPING_TIMEOUT_MS);
@@ -502,14 +564,15 @@ function updateTypingIndicator(data) {
     return;
   }
 
-  const label = uniqueNames.length === 1
-    ? `${uniqueNames[0]} is typing…`
-    : `${uniqueNames.join(", ")} are typing…`;
+  const label =
+    uniqueNames.length === 1
+      ? `${uniqueNames[0]} is typing…`
+      : `${uniqueNames.join(", ")} are typing…`;
 
   typingIndicator.textContent = label;
 }
 
-// ==== Message helpers ====
+// ===== MESSAGE HELPERS =====
 function formatTime(ts) {
   if (!ts) return "";
   const d = new Date(ts);
@@ -719,7 +782,7 @@ function scrollToBottom() {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// ==== Edit / Delete / Ban ====
+// ===== EDIT / DELETE / BAN =====
 function handleEditMessage(id, data) {
   const currentText = data.text || "";
   const newText = prompt("Edit message:", currentText);
@@ -729,39 +792,48 @@ function handleEditMessage(id, data) {
 
   const filtered = filterString(trimmed);
 
-  messagesRef.child(id).update({
-    text: filtered,
-    edited: true,
-    editedAt: Date.now()
-  }).catch(err => {
-    console.error("Failed to edit message:", err);
-    alert("Error editing message. Check console.");
-  });
+  messagesRef
+    .child(id)
+    .update({
+      text: filtered,
+      edited: true,
+      editedAt: Date.now()
+    })
+    .catch(err => {
+      console.error("Failed to edit message:", err);
+      alert("Error editing message. Check console.");
+    });
 }
 
 function handleDeleteMessage(id) {
   if (!confirm("Delete this message?")) return;
-  messagesRef.child(id).remove().catch(err => {
-    console.error("Failed to delete message:", err);
-    alert("Error deleting message. Check console.");
-  });
+  messagesRef
+    .child(id)
+    .remove()
+    .catch(err => {
+      console.error("Failed to delete message:", err);
+      alert("Error deleting message. Check console.");
+    });
 }
 
 function handleBanClient(clientId) {
   if (!isAdmin) return;
   if (!confirm("Ban this device from chatting?")) return;
 
-  bansRef.child(clientId).set({
-    banned: true,
-    by: getCurrentName(),
-    ts: Date.now()
-  }).catch(err => {
-    console.error("Failed to ban client:", err);
-    alert("Error banning client. Check console.");
-  });
+  bansRef
+    .child(clientId)
+    .set({
+      banned: true,
+      by: getCurrentName(),
+      ts: Date.now()
+    })
+    .catch(err => {
+      console.error("Failed to ban client:", err);
+      alert("Error banning client. Check console.");
+    });
 }
 
-// ==== Sending messages ====
+// ===== SENDING MESSAGES =====
 chatForm.addEventListener("submit", e => {
   e.preventDefault();
 
@@ -792,15 +864,17 @@ chatForm.addEventListener("submit", e => {
     clientId: myClientId
   };
 
-  messagesRef.push(msg).catch(err => {
-    console.error("Failed to send message:", err);
-    alert("Error sending message. Check console.");
-  });
+  messagesRef
+    .push(msg)
+    .catch(err => {
+      console.error("Failed to send message:", err);
+      alert("Error sending message. Check console.");
+    });
 
   messageInput.value = "";
 });
 
-// ==== Boot ====
+// ===== BOOT =====
 loadAccountFromStorage();
 updateAuthUI();
 initRooms();
