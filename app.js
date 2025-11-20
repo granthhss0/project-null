@@ -48,8 +48,19 @@ const adminUsernames = [
 
 // Word filter
 const bannedWords = [
-  // "badword1",
-  // "badword2"
+    "fuck",
+    "shit",
+    "porn",
+    "retard",
+    "faggot",
+    "sex",
+    "orgy",
+    "tits",
+    "pussy",
+    "ass",
+    "dick",
+    "cunt",
+    "bitch"
 ];
 
 const roomsRef = db.ref("rooms");
