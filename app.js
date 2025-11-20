@@ -45,6 +45,7 @@ let isAdmin = false;
 const adminUsernames = [
    "grant",
    "king derrick",
+   "bannedgrant"
 ];
 
 // Word filter
