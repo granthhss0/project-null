@@ -37,9 +37,16 @@ let isAdmin = false;
 
 // PUT ADMINS HERE: exact Google emails
 const adminEmails = [
-  "grantschmidt8@gmail.com"
+  "youremail@example.com",
   // "friend@gmail.com",
   // "other-admin@domain.com"
+];
+
+// WORD FILTER: everything in here will get censored in messages + names (case-insensitive)
+const bannedWords = [
+  // put your words here, all lowercase. Example:
+  // "badword1",
+  // "badword2"
 ];
 
 const roomsRef = db.ref("rooms");
@@ -61,6 +68,24 @@ const DEFAULT_ROOMS = ["general", "gaming", "random"];
 
 // track currently open message menu (dropdown)
 let openMenuEl = null;
+
+// ======== FILTER HELPERS =========
+
+function filterString(str) {
+  if (!str) return "";
+  let out = String(str);
+  bannedWords.forEach(w => {
+    if (!w) return;
+    const re = new RegExp(w, "gi"); // match anywhere, case-insensitive
+    out = out.replace(re, "*".repeat(w.length));
+  });
+  return out;
+}
+
+// for names / room names, same logic but kept separate in case you want to tweak later
+function filterName(str) {
+  return filterString(str);
+}
 
 // close open menu helper
 function closeOpenMenu() {
@@ -85,7 +110,7 @@ function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
-// Turn a Firebase user into "firstname l" (all lowercase)
+// Turn a Firebase user into "firstname l" (all lowercase, filtered)
 function formatDisplayNameFromUser(user) {
   if (!user) return "guest";
 
@@ -114,8 +139,9 @@ function formatDisplayNameFromUser(user) {
     baseName = "Guest";
   }
 
-  // force entire name to lowercase
-  return baseName.toLowerCase();
+  // all lowercase, then run through name filter
+  const lower = baseName.toLowerCase();
+  return filterName(lower);
 }
 
 function getCurrentName() {
@@ -282,17 +308,23 @@ function slugifyRoomName(name) {
   return slug;
 }
 
-// Create room – SIGN-IN REQUIRED
+// Create room – SIGN-IN REQUIRED + filtered name
 function createRoom() {
   if (!currentUser) {
     alert("Sign in to create rooms.");
     return;
   }
 
-  const name = newRoomInput.value.trim();
-  if (!name) return;
+  const rawName = newRoomInput.value.trim();
+  if (!rawName) return;
 
-  const id = slugifyRoomName(name);
+  const filtered = filterName(rawName);
+  if (!filtered.replace(/\*/g, "").trim()) {
+    alert("Room name blocked by filter.");
+    return;
+  }
+
+  const id = slugifyRoomName(filtered);
 
   roomsRef.child(id).once("value").then(snap => {
     if (snap.exists()) {
@@ -301,7 +333,7 @@ function createRoom() {
     }
 
     return roomsRef.child(id).set({
-      name,
+      name: filtered,
       createdAt: Date.now(),
       createdBy: currentUser ? currentUser.uid : null
     }).then(() => {
@@ -610,7 +642,6 @@ function buildMessageElement(id, data) {
 
     menuBtn.addEventListener("click", e => {
       e.stopPropagation();
-      // toggle menu
       if (openMenuEl && openMenuEl !== menu) {
         openMenuEl.classList.remove("open");
       }
@@ -665,8 +696,10 @@ function handleEditMessage(id, data) {
   const trimmed = newText.trim();
   if (!trimmed) return;
 
+  const filtered = filterString(trimmed);
+
   messagesRef.child(id).update({
-    text: trimmed,
+    text: filtered,
     edited: true,
     editedAt: Date.now()
   }).catch(err => {
@@ -698,6 +731,7 @@ function handleBanClient(clientId) {
 }
 
 // ==== Sending messages ====
+// Messages are filtered BEFORE being saved.
 chatForm.addEventListener("submit", e => {
   e.preventDefault();
 
@@ -719,10 +753,12 @@ chatForm.addEventListener("submit", e => {
   const text = messageInput.value.trim();
   if (!text) return;
 
+  const filteredText = filterString(text);
+
   const msg = {
-    name: getCurrentName(),             // all lowercase "firstname l"
+    name: getCurrentName(),             // already filtered + lowercase
     email: currentUser.email || null,   // used to detect admins
-    text,
+    text: filteredText,
     timestamp: Date.now(),
     clientId: myClientId
   };
