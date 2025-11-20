@@ -33,6 +33,8 @@ const loginNameInput = document.getElementById("loginName");
 const loginPinInput = document.getElementById("loginPin");
 const statusPill = document.getElementById("statusPill");
 
+const presenceList = document.getElementById("presenceList");
+
 // ===== STATE =====
 const myClientId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
 
@@ -41,7 +43,7 @@ let isAdmin = false;
 
 // Admins by username (exact lowercase name)
 const adminUsernames = [
-  // "grant s",
+   "grant",
 ];
 
 // Word filter
@@ -53,6 +55,8 @@ const bannedWords = [
 const roomsRef = db.ref("rooms");
 const bansRef = db.ref("bans");
 const accountsRef = db.ref("accounts");
+const presenceRef = db.ref("presence");
+const connectedRef = db.ref(".info/connected");
 
 let bannedClientIds = new Set();
 
@@ -68,6 +72,10 @@ let typingTimeoutHandle = null;
 const DEFAULT_ROOMS = ["general", "gaming", "random"];
 
 let openMenuEl = null;
+
+// presence
+let presenceEntryRef = null;
+let presenceMap = {};
 
 // ===== FILTER HELPERS =====
 function filterString(str) {
@@ -95,6 +103,11 @@ function slugUsername(name) {
     .replace(/[^a-z0-9\-]/g, "");
 }
 
+function getCurrentName() {
+  if (!currentAccount) return "guest";
+  return currentAccount.name;
+}
+
 function setCurrentAccount(acc) {
   currentAccount = acc;
   isAdmin = !!(currentAccount && adminUsernames.includes(currentAccount.name));
@@ -109,6 +122,7 @@ function setCurrentAccount(acc) {
   }
   updateAuthUI();
   checkBanState();
+  touchPresenceName();
 }
 
 function loadAccountFromStorage() {
@@ -123,11 +137,6 @@ function loadAccountFromStorage() {
   } catch (e) {
     console.error("Failed to load account from storage", e);
   }
-}
-
-function getCurrentName() {
-  if (!currentAccount) return "guest";
-  return currentAccount.name;
 }
 
 // ===== 3-DOT MENU CLOSE HANDLING =====
@@ -147,7 +156,11 @@ document.addEventListener("click", e => {
 function updateStatusPill() {
   if (!statusPill) return;
 
-  statusPill.classList.remove("status-offline", "status-online", "status-banned");
+  statusPill.classList.remove(
+    "status-offline",
+    "status-online",
+    "status-banned"
+  );
 
   if (bannedClientIds.has(myClientId)) {
     statusPill.textContent = "banned";
@@ -180,7 +193,6 @@ function updateAuthUI() {
 
     messageInput.disabled = true;
     messageInput.placeholder = "Set a name to chat…";
-    const sendBtn = chatForm.querySelector('button[type="submit"]');
     if (sendBtn) sendBtn.disabled = true;
 
     newRoomInput.disabled = true;
@@ -218,9 +230,90 @@ function checkBanState() {
   updateStatusPill();
 }
 
-// ===== SIGN UP / LOG IN HANDLERS =====
-// NOTE: once currentAccount is set, UI is "locked" – no switch/logout.
+// ===== PRESENCE (WHO'S IN SERVER) =====
+function renderPresenceList() {
+  if (!presenceList) return;
+  presenceList.innerHTML = "";
 
+  const now = Date.now();
+  const cutoff = now - 5 * 60 * 1000; // 5 min
+
+  const byName = new Map();
+
+  Object.entries(presenceMap).forEach(([clientId, entry]) => {
+    if (!entry || !entry.name) return;
+    if (!entry.ts || entry.ts < cutoff) return;
+    const name = String(entry.name).trim();
+    if (!name) return;
+    const existing = byName.get(name);
+    if (!existing || entry.ts > existing.ts) {
+      byName.set(name, { ts: entry.ts });
+    }
+  });
+
+  const names = Array.from(byName.keys()).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  if (!names.length) {
+    const pill = document.createElement("div");
+    pill.classList.add("presence-pill");
+    pill.textContent = "no one online";
+    presenceList.appendChild(pill);
+    return;
+  }
+
+  names.forEach(name => {
+    const pill = document.createElement("div");
+    pill.classList.add("presence-pill");
+    pill.textContent =
+      name + (adminUsernames.includes(name) ? " (admin)" : "");
+    presenceList.appendChild(pill);
+  });
+}
+
+function touchPresenceName() {
+  if (!presenceEntryRef) return;
+  presenceEntryRef.update({
+    name: getCurrentName(),
+    ts: Date.now()
+  });
+}
+
+function initPresence() {
+  // listen to entire presence list
+  presenceRef.on("value", snap => {
+    presenceMap = snap.val() || {};
+    renderPresenceList();
+  });
+
+  // handle this client connection
+  connectedRef.on("value", snap => {
+    if (!snap.val()) return;
+
+    presenceEntryRef = presenceRef.child(myClientId);
+    presenceEntryRef
+      .onDisconnect()
+      .remove()
+      .catch(() => {});
+
+    presenceEntryRef.set({
+      name: getCurrentName(),
+      ts: Date.now()
+    });
+  });
+
+  // heartbeat so they stay "online"
+  setInterval(() => {
+    if (!presenceEntryRef) return;
+    presenceEntryRef.update({
+      name: getCurrentName(),
+      ts: Date.now()
+    });
+  }, 20000);
+}
+
+// ===== SIGN UP / LOG IN (LOCKED ONCE SET) =====
 signupForm.addEventListener("submit", async e => {
   e.preventDefault();
   if (currentAccount) {
@@ -605,6 +698,10 @@ function buildRichTextNodes(text) {
       return;
     }
 
+    if (token.startsWith("http://") || token.startswith?.("https://")) {
+      // older browsers don't support startsWith? fallback:
+    }
+
     if (token.startsWith("http://") || token.startsWith("https://")) {
       const isImage = /\.(png|jpe?g|gif|webp|bmp)$/i.test(token);
       if (isImage) {
@@ -879,3 +976,4 @@ loadAccountFromStorage();
 updateAuthUI();
 initRooms();
 checkBanState();
+initPresence();
