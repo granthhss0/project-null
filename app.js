@@ -59,6 +59,10 @@ const bannedWords = [
     "tits",
     "pussy",
     "ass",
+    "rape",
+    "child corn",
+    "molest",
+    "cp",
     "dick",
     "cunt",
     "bitch"
