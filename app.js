@@ -43,25 +43,13 @@ let isAdmin = false;
 
 // Admins by username (exact lowercase name)
 const adminUsernames = [
-   "grant",
-   "king derrick"
+  // "grant s",
 ];
 
 // Word filter
 const bannedWords = [
-    "fuck",
-    "shit",
-    "porn",
-    "retard",
-    "faggot",
-    "sex",
-    "orgy",
-    "tits",
-    "pussy",
-    "ass",
-    "dick",
-    "cunt",
-    "bitch"
+  // "badword1",
+  // "badword2"
 ];
 
 const roomsRef = db.ref("rooms");
@@ -88,6 +76,34 @@ let openMenuEl = null;
 // presence
 let presenceEntryRef = null;
 let presenceMap = {};
+
+// ===== UNREAD TAB DOT =====
+const BASE_TITLE = document.title || "Project Null · Chat";
+const UNREAD_PREFIX = "· ";
+let windowFocused = typeof document.hasFocus === "function" ? document.hasFocus() : true;
+let hasUnread = false;
+
+function updateTitle() {
+  if (hasUnread) {
+    document.title = UNREAD_PREFIX + BASE_TITLE;
+  } else {
+    document.title = BASE_TITLE;
+  }
+}
+
+function setUnread(flag) {
+  hasUnread = !!flag;
+  updateTitle();
+}
+
+window.addEventListener("focus", () => {
+  windowFocused = true;
+  setUnread(false); // clear dot when you come back
+});
+
+window.addEventListener("blur", () => {
+  windowFocused = false;
+});
 
 // ===== FILTER HELPERS =====
 function filterString(str) {
@@ -263,9 +279,7 @@ function renderPresenceList() {
     }
   });
 
-  const names = Array.from(byName.keys()).sort((a, b) =>
-    a.localeCompare(b)
-  );
+  const names = Array.from(byName.keys()).sort((a, b) => a.localeCompare(b));
 
   if (!names.length) {
     const pill = document.createElement("div");
@@ -293,13 +307,11 @@ function touchPresenceName() {
 }
 
 function initPresence() {
-  // listen to entire presence list
   presenceRef.on("value", snap => {
     presenceMap = snap.val() || {};
     renderPresenceList();
   });
 
-  // handle this client connection
   connectedRef.on("value", snap => {
     if (!snap.val()) return;
 
@@ -315,7 +327,6 @@ function initPresence() {
     });
   });
 
-  // heartbeat so they stay "online"
   setInterval(() => {
     if (!presenceEntryRef) return;
     presenceEntryRef.update({
@@ -574,6 +585,13 @@ function deleteRoom(roomId) {
     });
 }
 
+function handleUnreadForIncoming(data) {
+  if (!data) return;
+  if (data.clientId === myClientId) return;
+  if (windowFocused) return;
+  setUnread(true);
+}
+
 function switchRoom(roomId) {
   currentRoomId = roomId;
 
@@ -602,6 +620,7 @@ function switchRoom(roomId) {
     if (!data) return;
     addMessageToUI(id, data);
     scrollToBottom();
+    handleUnreadForIncoming(data);
   });
 
   messagesRef.on("child_changed", snap => {
@@ -710,11 +729,10 @@ function buildRichTextNodes(text) {
       return;
     }
 
-    if (token.startsWith("http://") || token.startswith?.("https://")) {
-      // older browsers don't support startsWith? fallback:
-    }
+    const isLink =
+      token.indexOf("http://") === 0 || token.indexOf("https://") === 0;
 
-    if (token.startsWith("http://") || token.startsWith("https://")) {
+    if (isLink) {
       const isImage = /\.(png|jpe?g|gif|webp|bmp)$/i.test(token);
       if (isImage) {
         const img = document.createElement("img");
@@ -989,3 +1007,4 @@ updateAuthUI();
 initRooms();
 checkBanState();
 initPresence();
+updateTitle();
